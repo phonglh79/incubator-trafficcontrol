@@ -26,6 +26,7 @@ use Mojo::UserAgent;
 use POSIX;
 use HTTP::Cookies;
 use DBI;
+use JSON;
 
 sub tools {
     my $self = shift;
@@ -73,7 +74,18 @@ sub diff_crconfig_iframe {
     my $self = shift;
     &stash_role($self);
     my $cdn_name = $self->param('cdn_name');
-    my ( $json, $error ) = UI::Topology::gen_crconfig_json( $self, $cdn_name );
+
+    foreach my $cookie ( @{ $self->req->cookies } ) {
+        $self->ua->cookie_jar->add(Mojo::Cookie::Response->new(name => $cookie->{'name'}, value => $cookie->{'value'}, domain => 'localhost', path => '/'));
+    }
+    my $resp = $self->ua->request_timeout(60)->get('https://localhost:' . $self->config->{'traffic_ops_golang'}{'port'} . '/api/1.2/cdns/' . $cdn_name . '/snapshot/new')->res;
+    my $json = undef;
+    my $error = undef;
+    if ( $resp->code ne '200' ) {
+        $error = $resp->message;
+    } else {
+        $json = decode_json($resp->body)->{'response'};
+    }
 
     my ( @ds_text, @loc_text, @cs_text, @csds_text, @rascal_text, @ccr_text, @cfg_text );
     if ( defined $error ) {
@@ -105,23 +117,11 @@ sub diff_crconfig_iframe {
     );
 }
 
-sub write_crconfig {
-    my $self     = shift;
-    my $cdn_name = $self->param('cdn_name');
-    my ( $json, $error ) = UI::Topology::gen_crconfig_json( $self, $cdn_name );
-    if ( defined $error ) {
-        $self->flash( alertmsg => $error );
-    }
-    else {
-        if ( !&is_oper($self) ) {
-            $self->flash( alertmsg => "No can do. Get more privs." );
-        } else {
-            UI::Topology::write_crconfig_json_to_db( $self, $cdn_name, $json );
-            &log( $self, "Snapshot CRConfig created.", "OPER" );
-            $self->flash( alertmsg => "Successfully wrote CRConfig.json!" );
-        }
-    }
-    return $self->redirect_to('/utils/close_fancybox');
+sub flash_and_close {
+    my $self = shift;
+		my $msg = $self->param('msg');
+		$self->flash( alertmsg => $msg );
+		return $self->redirect_to('/utils/close_fancybox');
 }
 
 sub queue_updates {

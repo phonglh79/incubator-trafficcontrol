@@ -549,6 +549,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -596,6 +597,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -644,6 +646,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -680,6 +683,7 @@
       },
       "domains": ["client-steering-target-1.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [
         {
           "protocol": "HTTP",
@@ -729,6 +733,7 @@
       },
       "domains": ["client-steering-target-2.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [
         {
           "protocol": "HTTP",
@@ -778,6 +783,7 @@
       },
       "domains": ["client-steering-target-3.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [
         {
           "protocol": "HTTP",
@@ -827,6 +833,7 @@
       },
       "domains": ["client-steering-target-4.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [
         {
           "protocol": "HTTP",
@@ -888,6 +895,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -936,6 +944,7 @@
       },
       "domains": ["steering-target-2.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -978,6 +987,7 @@
       },
       "domains": ["test.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -1021,6 +1031,7 @@
       "bypassDestination": {"DNS": {"ttl": "30"}},
       "domains": ["federation-test.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "edge",
       "matchsets": [
         {
           "protocol": "DNS",
@@ -1083,6 +1094,7 @@
       },
       "domains": ["steering-target-1.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [
         {
           "protocol": "HTTP",
@@ -1138,6 +1150,7 @@
       },
       "domains": ["steering-target-4.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -1184,6 +1197,7 @@
       },
       "domains": ["steering-target-3.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -1239,6 +1253,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -1281,6 +1296,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -1323,6 +1339,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -1352,6 +1369,7 @@
         "dns-test.thecdn.example.com"
       ],
       "coverageZoneOnly": "false",
+      "routingName": "edge",
       "matchsets": [{
         "protocol": "DNS",
         "matchlist": [{
@@ -1392,43 +1410,51 @@
   },
   "edgeLocations": {
     "location-0": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -107.480250,
       "latitude": 40.117800
     },
     "location-1": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -121.0,
       "latitude": 49.0
     },
     "location-2": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -111.0,
       "latitude": 49.0
     },
     "location-3": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -101.0,
       "latitude": 49.0
     },
     "location-4": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -91.0,
       "latitude": 49.0
     },
     "location-7": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -66.0,
       "latitude": 36.0
     },
     "location-8": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -76.0,
       "latitude": 36.0
     },
     "location-9": {
+      "localizationMethods": ["CZ", "DEEP_CZ", "GEO"],
       "longitude": -86.0,
       "latitude": 36.0
     }
   },
   "config": {
-    "certificate.api.url": "http://${toHostname}/api/1.2/cdns/name/${cdnName}/sslkeys.json",
-    "federationmapping.polling.url": "http://${toHostname}/internal/api/1.2/federations.json",
+    "certificate.api.url": "http://${toHostname}/api/1.3/cdns/name/${cdnName}/sslkeys.json",
+    "federationmapping.polling.url": "http://${toHostname}/internal/api/1.3/federations.json",
     "federationmapping.polling.interval": "600000",
-    "steeringmapping.polling.url": "http://${toHostname}/internal/api/1.2/steering.json",
+    "steeringmapping.polling.url": "http://${toHostname}/internal/api/1.3/steering.json",
     "steeringmapping.polling.interval": "15000",
     "weight": "1.0",
     "requestHeaders": [
@@ -1447,7 +1473,7 @@
     },
     "coveragezone.polling.interval": "86400000",
     "regional_geoblock.polling.url.renamed": "http://testing-tm-01.cdn.example.com/some/path",
-    "keystore.auth.url": "http://localhost:3000/api/1.1/user/login",
+    "keystore.auth.url": "http://localhost:3000/api/1.3/user/login",
     "neustar.polling.interval": "12800000",
     "geolocation6.polling.interval": "86400000",
     "domain_name": "thecdn.example.com",
@@ -1460,7 +1486,7 @@
       "refresh": "28800"
     },
     "coveragezone.polling.url": "http://localhost:8889/czf.json",
-    "api.auth.url": "http://${toHostname}/api/1.1/user/login",
+    "api.auth.url": "http://${toHostname}/api/1.3/user/login",
     "certificates.polling.interval": "10000",
     "dnssec.enabled": "false"
   }

@@ -18,14 +18,14 @@ package API::Profile;
 
 # JvD Note: you always want to put Utils as the first use. Sh*t don't work if it's after the Mojo lines.
 use UI::Utils;
-
+use UI::Parameter;
 use Mojo::Base 'Mojolicious::Controller';
 use Data::Dumper;
 use JSON;
+use Validate::Tiny ':all';
 
 sub index {
 	my $self = shift;
-	my $orderby = $self->param('orderby');
 	my $parameter_id = $self->param('param');
 	my $cdn_id = $self->param('cdn');
 
@@ -33,7 +33,7 @@ sub index {
 	my %criteria;
 
 	if ( defined $parameter_id ) {
-		my $rs = $self->db->resultset('ProfileParameter')->search( { parameter => $parameter_id },  { prefetch => [ 'profile' ], order_by => $orderby }  );
+		my $rs = $self->db->resultset('ProfileParameter')->search( { parameter => $parameter_id },  { prefetch => [ 'profile' ], order_by => 'profile.name' }  );
 		while ( my $row = $rs->next ) {
 			push(
 				@data, {
@@ -43,6 +43,7 @@ sub index {
 					"cdn" 			=> defined($row->profile->cdn) ? $row->profile->cdn->id : undef,
 					"cdnName" 		=> defined($row->profile->cdn) ? $row->profile->cdn->name : undef,
 					"type" 			=> $row->profile->type,
+					"routingDisabled"	=> \$row->profile->routing_disabled,
 					"lastUpdated" 	=> $row->profile->last_updated
 				}
 			);
@@ -51,7 +52,7 @@ sub index {
 		if ( defined $cdn_id ) {
 			$criteria{'cdn'} = $cdn_id;
 		}
-		my $rs_data = $self->db->resultset("Profile")->search( \%criteria, { order_by => $orderby } );
+		my $rs_data = $self->db->resultset("Profile")->search( \%criteria, { prefetch => [ 'cdn' ], order_by => 'me.name' } );
 		while ( my $row = $rs_data->next ) {
 			push(
 				@data, {
@@ -61,6 +62,7 @@ sub index {
 					"cdn"         => defined($row->cdn) ? $row->cdn->id : undef,
 					"cdnName"     => defined($row->cdn) ? $row->cdn->name : undef,
 					"type"        => $row->type,
+					"routingDisabled"	=> \$row->routing_disabled,
 					"lastUpdated" => $row->last_updated
 				}
 			);
@@ -88,24 +90,20 @@ sub get_profiles_by_paramId {
 	my $self    	= shift;
 	my $param_id	= $self->param('id');
 
-	my $param_profiles = $self->db->resultset('ProfileParameter')->search( { parameter => $param_id } );
-
-	my $profiles = $self->db->resultset('Profile')->search(
-		{ 'me.id' => { -in => $param_profiles->get_column('profile')->as_query } }
-	);
+	my $param_profiles = $self->db->resultset('ProfileParameter')->search( { parameter => $param_id }, { prefetch => [ 'profile' ] } );
 
 	my @data;
-	if ( defined($profiles) ) {
-		while ( my $row = $profiles->next ) {
-			push(
-				@data, {
-					"id"          => $row->id,
-					"name"        => $row->name,
-					"description" => $row->description,
-					"lastUpdated" => $row->last_updated
-				}
-			);
-		}
+	while ( my $row = $param_profiles->next ) {
+		push(
+			@data, {
+				"id"				=> $row->profile->id,
+				"name"				=> $row->profile->name,
+				"description"		=> $row->profile->description,
+				"type"				=> $row->profile->type,
+				"routingDisabled"	=> $row->profile->routing_disabled,
+				"lastUpdated"		=> $row->profile->last_updated
+			}
+		);
 	}
 
 	return $self->success( \@data );
@@ -136,6 +134,7 @@ sub get_unassigned_profiles_by_paramId {
 				"cdn"         => defined($row->cdn) ? $row->cdn->id : undef,
 				"cdnName"     => defined($row->cdn) ? $row->cdn->name : undef,
 				"type"        => $row->type,
+				"routingDisabled"	=> \$row->routing_disabled,
 				"lastUpdated" => $row->last_updated
 			}
 		);
@@ -144,25 +143,50 @@ sub get_unassigned_profiles_by_paramId {
 }
 
 sub show {
-	my $self = shift;
-	my $id   = $self->param('id');
+	my $self 			= shift;
+	my $id   			= $self->param('id');
+	my $include_params	= $self->param('includeParams') ? 1 : 0;
+	my @params 			= ();
 
-	my $rs_data = $self->db->resultset("Profile")->search( { 'me.id' => $id }, { prefetch => [ 'cdn' ] } );
-	my @data = ();
-	while ( my $row = $rs_data->next ) {
-		push(
-			@data, {
-				"id"          => $row->id,
-				"name"        => $row->name,
-				"description" => $row->description,
-				"cdn"         => defined($row->cdn) ? $row->cdn->id : undef,
-				"cdnName"     => defined($row->cdn) ? $row->cdn->name : undef,
-				"type"        => $row->type,
-				"lastUpdated" => $row->last_updated
-			}
-		);
+	my $profile = $self->db->resultset("Profile")->search( { 'me.id' => $id }, { prefetch => [ 'cdn' ] } );
+
+	if ($include_params) {
+		my %criteria;
+		$criteria{'profile.id'} = $id;
+
+		my $rs_profile_params = $self->db->resultset("ProfileParameter")->search( \%criteria, { prefetch => [ 'parameter', 'profile' ], order_by => 'parameter.name, parameter.config_file, parameter.value' } );
+
+		while ( my $pp = $rs_profile_params->next ) {
+			my $value = $pp->parameter->value;
+			&UI::Parameter::conceal_secure_parameter_value( $self, $pp->parameter->secure, \$value );
+			push(
+				@params, {
+					"name"        => $pp->parameter->name,
+					"configFile"  => $pp->parameter->config_file,
+					"value"       => $value,
+				}
+			);
+		}
 	}
-	$self->success( \@data );
+
+	my @profiles = ();
+	while ( my $row = $profile->next ) {
+		my $profile = {
+			"id"          => $row->id,
+			"name"        => $row->name,
+			"description" => $row->description,
+			"cdn"         => defined($row->cdn) ? $row->cdn->id : undef,
+			"cdnName"     => defined($row->cdn) ? $row->cdn->name : undef,
+			"type"        => $row->type,
+			"routingDisabled"	=> \$row->routing_disabled,
+			"lastUpdated" => $row->last_updated
+		};
+		if ($include_params) {
+			$profile->{params} = \@params;
+		}
+		push(@profiles, $profile);
+	}
+	$self->success( \@profiles );
 }
 
 sub create {
@@ -176,19 +200,14 @@ sub create {
 		return $self->alert( { Error => " - You must be an admin or oper to perform this operation!" } );
 	}
 
+	my ( $is_valid, $result ) = $self->is_profile_valid($params);
+
+	if ( !$is_valid ) {
+		return $self->alert($result);
+	}
+
 	my $name = $params->{name};
-	if ( !defined($name) || $name eq "" || $name =~ /\s/ ) {
-		return $self->alert("profile 'name' is required and cannot contain spaces.");
-	}
-
 	my $description = $params->{description};
-	if ( !defined($description) || $description eq "" ) {
-		return $self->alert("profile 'description' is required.");
-	}
-
-	if ( !defined( $params->{type} ) ) {
-		return $self->alert("Profile type is required.");
-	}
 
 	my $existing_profile = $self->db->resultset('Profile')->search( { name => $name } )->get_column('name')->single();
 	if ( $existing_profile && $name eq $existing_profile ) {
@@ -199,15 +218,25 @@ sub create {
 	if ($existing_desc) {
 		return $self->alert("a profile with the exact same description already exists.");
 	}
-
+	
 	my $cdn = $params->{cdn};
 	my $type = $params->{type};
+	my $routing_disabled = defined($params->{routingDisabled}) ? $params->{routingDisabled} : 0;
+	# Boolean values don't always show properly, so we're going to evaluate these then convert them to standard integers.
+	# This allows the response output to always show true/false correctly.
+	if ($routing_disabled == 1) {
+		$routing_disabled = 1;
+	}
+	else { 
+		$routing_disabled = 0;
+	}
 	my $insert = $self->db->resultset('Profile')->create(
 		{
 			name        => $name,
 			description => $description,
 			cdn         => $cdn,
 			type        => $type,
+			routing_disabled => $routing_disabled,
 		}
 	);
 	$insert->insert();
@@ -221,6 +250,7 @@ sub create {
 	$response->{description} = $description;
 	$response->{cdn}         = $cdn;
 	$response->{type}        = $type;
+	$response->{routingDisabled} = \$routing_disabled;
 	return $self->success($response);
 }
 
@@ -228,7 +258,7 @@ sub copy {
 	my $self = shift;
 
 	if ( !&is_oper($self) ) {
-		return $self->alert( { Error => " - You must be an admin or oper to perform this operation!" } );
+		return $self->forbidden();
 	}
 
 	my $name                   = $self->param('profile_name');
@@ -280,8 +310,9 @@ sub copy {
 			$insert->insert();
 		}
 	}
+	my $msg = "Created new profile [ $name ] from existing profile [ $profile_copy_from_name ]";
 
-	&log( $self, "Created profile from copy with id: " . $new_id . " and name: " . $name, "APICHANGE" );
+	&log( $self, $msg, "APICHANGE" );
 
 	my $response;
 	$response->{id}              = $new_id;
@@ -289,7 +320,7 @@ sub copy {
 	$response->{description}     = $description;
 	$response->{profileCopyFrom} = $profile_copy_from_name;
 	$response->{idCopyFrom}      = $profile_copy_from_id;
-	return $self->success($response);
+	return $self->success($response, $msg);
 }
 
 sub update {
@@ -306,14 +337,13 @@ sub update {
 		return $self->not_found();
 	}
 
-	if ( !defined($params) ) {
-		return $self->alert("parameters must be in JSON format.");
+	my ( $is_valid, $result ) = $self->is_profile_valid($params);
+
+	if ( !$is_valid ) {
+		return $self->alert($result);
 	}
 
 	my $name = $params->{name};
-	if ( !defined($name) || $name eq "" || $name =~ /\s/ ) {
-		return $self->alert("profile 'name' is required and cannot contain spaces.");
-	}
 	if ( $profile->name ne $name ) {
 		my $existing = $self->db->resultset('Profile')->find( { name => $name } );
 		if ($existing) {
@@ -322,9 +352,6 @@ sub update {
 	}
 
 	my $description = $params->{description};
-	if ( !defined($description) || $description eq "" ) {
-		return $self->alert("profile 'description' is required.");
-	}
 	if ( $profile->description ne $description ) {
 		my $existing = $self->db->resultset('Profile')->find( { description => $description } );
 		if ($existing) {
@@ -332,8 +359,14 @@ sub update {
 		}
 	}
 
-	if ( !defined( $params->{type} ) ) {
-		return $self->alert("Profile type is required.");
+	my $routing_disabled = defined($params->{routingDisabled}) ? $params->{routingDisabled} : 0;
+	# Boolean values don't always show properly, so we're going to evaluate these then convert them to standard integers.
+	# This allows the response output to always show true/false correctly.
+	if ($routing_disabled == 1) {
+		$routing_disabled = 1;
+	}
+	else { 
+		$routing_disabled = 0;
 	}
 
 	my $cdn = $params->{cdn};
@@ -345,13 +378,13 @@ sub update {
 		}
 	}
 
-
 	my $type = $params->{type};
 	my $values = {
 		name        => $name,
 		description => $description,
 		cdn         => $cdn,
 		type        => $type,
+		routing_disabled => $routing_disabled,
 	};
 
 	my $rs = $profile->update($values);
@@ -362,6 +395,7 @@ sub update {
 		$response->{description} = $description;
 		$response->{cdn}         = $cdn;
 		$response->{type}        = $type;
+		$response->{routingDisabled} = \$routing_disabled;
 		&log( $self, "Update profile with id: " . $id . " and name: " . $name, "APICHANGE" );
 		return $self->success( $response, "Profile was updated: " . $id );
 	}
@@ -404,6 +438,121 @@ sub delete {
 	return $self->success_message("Profile was deleted.");
 }
 
+sub export {
+	my $self	= shift;
+	my $id		= $self->param('id');
+	my $export	= {};
+
+	my $rs = $self->db->resultset('ProfileParameter')->search( { profile => $id }, { prefetch => [ { parameter => undef }, { profile => undef } ] } );
+
+	my $i = 0;
+	while ( my $row = $rs->next ) {
+		if ( !defined($export->{profile}) ) {
+			$export->{profile}->{name}        	= $row->profile->name;
+			$export->{profile}->{description} 	= $row->profile->description;
+			$export->{profile}->{type}        	= $row->profile->type;
+			$export->{profile}->{cdn}        	= defined($row->profile->cdn) ? $row->profile->cdn->name : undef,
+		}
+		$export->{parameters}->[$i] = {
+			name        => $row->parameter->name,
+			config_file => $row->parameter->config_file,
+			value       => $row->parameter->value
+		};
+		$i++;
+	}
+	$self->render( json => $export );
+}
+
+sub import {
+	my $self             = shift;
+	my $new_id           = -1;
+	my $data 			= $self->req->json;
+	my $p_name           = $data->{profile}->{name};
+	my $p_desc           = $data->{profile}->{description};
+	my $p_type           = $data->{profile}->{type};
+	my $p_cdn_id         = $self->db->resultset('Cdn')->search( { name => $data->{profile}->{cdn} } )->get_column('id')->single();
+	my $existing_profile = $self->db->resultset('Profile')->search( { name => $p_name } )->get_column('name')->single();
+	my @valid_types      = @{$self->db->source('ProfileTypeValue')->column_info('value')->{extra}->{list}};
+
+	if ( !&is_oper($self) ) {
+		return $self->forbidden();
+	}
+
+	if (!defined($p_cdn_id)) {
+		return $self->alert($data->{profile}->{cdn} . " CDN does not exist");
+	}
+
+	if ($existing_profile) {
+		return $self->alert("A profile with the name \"$p_name\" already exists");
+	}
+
+	if (! grep(/^$p_type$/, @valid_types )) {
+		my $vtypes = join(', ', @valid_types);
+		return $self->alert("Profile contains type \"$p_type\" which is not a valid profile type. Valid types are: $vtypes");
+	}
+
+	my $insert = $self->db->resultset('Profile')->create(
+		{
+			name        => $p_name,
+			description => $p_desc,
+			type        => $p_type,
+			cdn         => $p_cdn_id,
+		}
+	);
+	$insert->insert();
+	$new_id = $insert->id;
+
+	my $new_count      = 0;
+	my $existing_count = 0;
+	my %done;
+	foreach my $param ( @{ $data->{parameters} } ) {
+		my $param_name        = $param->{name};
+		my $param_config_file = $param->{config_file};
+		my $param_value       = $param->{value};
+		my $param_id =
+			$self->db->resultset('Parameter')
+				->search( { -and => [ name => $param_name, value => $param_value, config_file => $param_config_file ] }, { rows => 1 } )->get_column('id')
+				->single();
+		if ( !defined($param_id) ) {
+			my $insert = $self->db->resultset('Parameter')->create(
+				{
+					name        => $param_name,
+					config_file => $param_config_file,
+					value       => $param_value,
+				}
+			);
+			$insert->insert();
+			$param_id = $insert->id();
+			$new_count++;
+		}
+		else {
+			next if defined( $done{$param_id} ); # just in case duplicate parameters were sent
+			$existing_count++;
+		}
+
+		my $link_insert = $self->db->resultset('ProfileParameter')->create(
+			{
+				parameter => $param_id,
+				profile   => $new_id,
+			}
+		);
+		$link_insert->insert();
+		$done{$param_id} = $new_id;
+	}
+
+	my $response;
+	$response->{id}            	= $insert->id;
+	$response->{name}          	= $insert->name;
+	$response->{description}    = $insert->description;
+	$response->{type} 			= $insert->type;
+	$response->{cdn} 			= $insert->cdn->name;
+
+	my $msg = "Profile imported [ " . $p_name . " ] with " . $new_count . " new and " . $existing_count . " existing parameters";
+	&log( $self, $msg, "APICHANGE" );
+
+	return $self->success( $response, $msg );
+}
+
 sub availableprofile {
 	my $self = shift;
 	my @data;
@@ -427,5 +576,35 @@ sub availableprofile {
 
 	$self->success( \@data );
 }
+
+sub is_profile_valid {
+	my $self   	= shift;
+	my $params 	= shift;
+
+	my $rules = {
+		fields => [
+			qw/name description cdn type routingDisabled/
+		],
+
+		# Validation checks to perform
+		checks => [
+			name			=> [ is_required("is required"), is_like( qr/^\S*$/, "must not contain spaces" ) ],
+			description		=> [ is_required("is required") ],
+			cdn				=> [ is_required("is required"), is_like( qr/^\d+$/, "must be a positive integer") ],
+			type			=> [ is_required("is required") ],
+		]
+	};
+
+	# Validate the input against the rules
+	my $result = validate( $params, $rules );
+
+	if ( $result->{success} ) {
+		return ( 1, $result->{data} );
+	}
+	else {
+		return ( 0, $result->{error} );
+	}
+}
+
 
 1;

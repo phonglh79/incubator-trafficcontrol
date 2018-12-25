@@ -17,6 +17,7 @@ traffic_ops/app/public/Trafficserver-Snapshots/*
 docs/.todo_cache
 docs/_build/
 traffic_ops/app/conf/ldap.conf
+traffic_ops/app/db/admin
 traffic_ops/app/public/css/images/
 traffic_ops/app/public/css/jquery-ui.css
 traffic_ops/app/public/js/bootstrap.min.js
@@ -32,3 +33,8 @@ traffic_router/*/*.log
 traffic_router/*.log
 .dbInfo
 /dist
+*.pyc
+bin/docker-compose
+/.m2
+# local storage for cdn-in-a-box Carton packages
+local.tar.gz

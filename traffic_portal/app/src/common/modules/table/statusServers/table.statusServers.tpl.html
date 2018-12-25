@@ -1,0 +1,79 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+<div class="x_panel">
+    <div class="x_title">
+        <ol class="breadcrumb pull-left">
+            <li><a ng-click="navigateToPath('/statuses')">Statuses</a></li>
+            <li><a ng-click="navigateToPath('/statuses/' + status.id)">{{::status.name}}</a></li>
+            <li class="active">Servers</li>
+        </ol>
+        <div class="pull-right">
+            <button class="btn btn-default" title="Refresh" ng-click="refresh()"><i class="fa fa-refresh"></i></button>
+        </div>
+        <div class="clearfix"></div>
+    </div>
+    <div class="x_content">
+        <br>
+        <table id="serversTable" class="table responsive-utilities jambo_table">
+            <thead>
+            <tr class="headings">
+                <th>UPD</th>
+                <th>Host</th>
+                <th>Domain</th>
+                <th>IP</th>
+                <th>IPv6</th>
+                <th>Status</th>
+                <th>Type</th>
+                <th>Profile</th>
+                <th>CDN</th>
+                <th>Cache Group</th>
+                <th>ILO</th>
+                <th style="text-align: right;">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr ng-click="editServer(s.id)" ng-repeat="s in ::servers" ng-class="::{'active': s.updPending}">
+                <td data-search="{{(s.updPending) ? 'UPD' : ''}}" data-order="{{::s.updPending}}">
+                    <i title="Updates Pending" ng-show="s.updPending" class="fa fa-clock-o fa-lg" aria-hidden="true"></i>
+                    <i title="Updates Applied" ng-show="!s.updPending" class="fa fa-check fa-lg" aria-hidden="true"></i>
+                </td>
+                <td data-search="^{{::s.hostName}}$">{{::s.hostName}}</td>
+                <td data-search="^{{::s.domainName}}$">{{::s.domainName}}</td>
+                <td data-search="^{{::s.ipAddress}}$"><a ng-click="ssh(s.ipAddress, $event)">{{::s.ipAddress}}</a></td>
+                <td data-search="^{{::s.ip6Address}}$">{{::s.ip6Address}}</td>
+                <td data-search="^{{::s.status}}$">
+                    <span ng-if="!isOffline(s.status)">{{::s.status}}</span>
+                    <span ng-if="isOffline(s.status)" uib-popover="{{::offlineReason(s)}}" popover-title="Offline Reason" popover-trigger="mouseenter" popover-placement="bottom" popover-append-to-body="true">{{::s.status}}</span>
+                </td>
+                <td data-search="^{{::s.type}}$">{{::s.type}}</td>
+                <td data-search="^{{::s.profile}}$">{{::s.profile}}</td>
+                <td data-search="^{{::s.cdnName}}$">{{::s.cdnName}}</td>
+                <td data-search="^{{::s.cachegroup}}$">{{::s.cachegroup}}</td>
+                <td data-search="^{{::s.iloIpAddress}}$"><a ng-click="ssh(s.iloIpAddress, $event)">{{::s.iloIpAddress}}</a></td>
+                <td style="text-align: right;">
+                    <span ng-if="s.type == 'RASCAL'"><a class="link action-link" title="Go to" ng-click="gotoMonitor(s, $event)"><i class="fa fa-sm fa-external-link"></i>&nbsp;&nbsp;</a></span>
+                    <span ng-if="showChartsButton"><a class="link action-link" title="View Charts" ng-click="openCharts(s, $event)"><i class="fa fa-sm fa-bar-chart"></i></a></span>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+

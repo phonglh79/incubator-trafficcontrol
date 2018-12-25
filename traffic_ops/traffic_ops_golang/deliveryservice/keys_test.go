@@ -1,0 +1,233 @@
+package deliveryservice
+
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+import (
+	"strings"
+	"testing"
+)
+
+const (
+	BadData = "This is bad data and it is not pem encoded"
+
+	SelfSignedCertOnly = `
+-----BEGIN CERTIFICATE-----
+MIIDkjCCAnoCCQCfwd219JKpUDANBgkqhkiG9w0BAQsFADCBijELMAkGA1UEBhMC
+VVMxETAPBgNVBAgMCENvbG9yYWRvMQ8wDQYDVQQHDAZEZW52ZXIxEDAOBgNVBAoM
+B0NvbWNhc3QxDjAMBgNVBAsMBXZpcGVyMRUwEwYDVQQDDAx3d3cudGVzdC5vcmcx
+HjAcBgkqhkiG9w0BCQEWD21pY2tleUB0ZXN0Lm9yZzAeFw0xNzExMTYxNjM5MTNa
+Fw0yNzExMTQxNjM5MTNaMIGKMQswCQYDVQQGEwJVUzERMA8GA1UECAwIQ29sb3Jh
+ZG8xDzANBgNVBAcMBkRlbnZlcjEQMA4GA1UECgwHQ29tY2FzdDEOMAwGA1UECwwF
+dmlwZXIxFTATBgNVBAMMDHd3dy50ZXN0Lm9yZzEeMBwGCSqGSIb3DQEJARYPbWlj
+a2V5QHRlc3Qub3JnMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6m6j
+iAMJpLMxZhIUE9DrPvni06NebLRah1RS8+R3J3PN1XCcgwwUZifZBpPgaSapFXbv
+ZdjlrfZFpkAfgFQXlyGae6BU+n4CwNlDdgo1XbEc8qoGIds7aYHEkrQZtZyh+XFY
+2BRvS6cbGGEc2x0w5IkXa136WCJcLtBzdT7FAVQJVhu9xPPnXk8igTZg6tFt27Eb
+ebHCUeDArGURFiFWdXm8dGCPUVCZxSCvxuXlI15ddgfp9GbFXxCUP5VR9Pj6Btqe
+7QymFROsIklpCw46ea0A87ikVMadPC21TubfayUAMQ8xl60iox5Y89g4XFrEgkyd
+WxhmPWrVpVQrPDWKgwIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQCZZW6rln/KbGVn
+UZ+7DV9PUB4r25B9wrRALy8rQw3UAePHRqZiAOVNWxrr3967zdPMc8d1kYckt+cG
+G1PU5BcbUVnS2qE0Tkfvqj6r+Oickru6tKfXDaqMOEtfNanwT9uDZCTeOaiSHBzx
+FpP/9TD05gEYbd1W4RRzT6/S7yLY0uYhVAHFdl2e7zOjhty4iDPF04fd+XyZ+3WS
+IxSgaMrTp00maFtbpPnhTaxIGzMYtodi6FaUcOmBfMlpRGKyksN0Z3eJ6R6nhMb3
+RGJ9nuGLKvqS5u9BggcDwo1qv2k8McdSg6plK6XodLyMdBVTB6K7hwSz1uVp3mX1
+HVGE4+ou
+-----END CERTIFICATE-----
+`
+	GoodTLSKeys = `
+-----BEGIN CERTIFICATE-----
+MIIF3DCCA8SgAwIBAgICEAAwDQYJKoZIhvcNAQELBQAwgYwxCzAJBgNVBAYTAlVT
+MREwDwYDVQQIDAhDb2xvcmFkbzEkMCIGA1UECgwbSXBjZG4gQ2VydGlmaWNhdGUg
+QXV0aG9yaXR5MSQwIgYDVQQLDBtJcGNkbiBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkx
+HjAcBgNVBAMMFUlwY2RuIEludGVybWVkaWF0ZSBDQTAeFw0xNzExMTYyMDUwMTla
+Fw0yNjAyMDIyMDUwMTlaMHAxCzAJBgNVBAYTAlVTMREwDwYDVQQIDAhDb2xvcmFk
+bzEPMA0GA1UEBwwGRGVudmVyMQ8wDQYDVQQKDAZJcGNkbiAxEjAQBgNVBAsMCUlw
+Y2RuIGRldjEYMBYGA1UEAwwPd3d3LmV4YW1wbGUuY29tMIIBIjANBgkqhkiG9w0B
+AQEFAAOCAQ8AMIIBCgKCAQEA1h9fXwJ17QYNMXM5jEgHecVxWm+CNPQbi2O0aLm5
+laEuoctl/xnclDgkOcV50sIgURSnaRXHCMa93zb95xQefTIvRF/1kU9e68mmFjz8
+frAdOaM90TdUf1yv26W37nT9Dx26CAiSwALXVdx+4oPorNHv20x3qPbs+3cDunAf
+/XVZ+6txn9Vsg00odHZofqZbmGTvG/ybQcGPjRPaWYHaLafjpDB3wPsDDu0L0bXT
+HNQ8VWzKwk8UQtzgtKxXAE2ZwLSdQWsWEKHFFNkaOqwfq21UYvct4q2rq91tDnba
+fqMjNNsqVkXdR24WcP8mgV1csVNLuZhmQaBNZ6w+hGitiQIDAQABo4IBYTCCAV0w
+CQYDVR0TBAIwADARBglghkgBhvhCAQEEBAMCBkAwMwYJYIZIAYb4QgENBCYWJE9w
+ZW5TU0wgR2VuZXJhdGVkIFNlcnZlciBDZXJ0aWZpY2F0ZTAdBgNVHQ4EFgQUiZeZ
+5UmwFF1VCgpwXf3g+q1FS6MwgcMGA1UdIwSBuzCBuIAUIV7iqt3+xYa1Fx/nYzxd
+1hxvNw2hgZukgZgwgZUxCzAJBgNVBAYTAlVTMREwDwYDVQQIDAhDb2xvcmFkbzEP
+MA0GA1UEBwwGRGVudmVyMSQwIgYDVQQKDBtJcGNkbiBDZXJ0aWZpY2F0ZSBBdXRo
+b3JpdHkxJDAiBgNVBAsMG0lwY2RuIENlcnRpZmljYXRlIGF1dGhvcml0eTEWMBQG
+A1UEAwwNSXBjZG4gUm9vdCBDQYICEAAwDgYDVR0PAQH/BAQDAgWgMBMGA1UdJQQM
+MAoGCCsGAQUFBwMBMA0GCSqGSIb3DQEBCwUAA4ICAQBHX+YmO6TLbMTZByuwrgiH
+uy7rPzpXTXSJvUM+upxSenrmz8H5fBzypLfKE1NOK58Rr25OyAd1IqgG1Id+8ycg
+atetjI1poaNCZvKPRr48wjcTVsfgx7HXW0fykI0KT239Ok4usEM3uqmbkn7Annf7
+dby8BKz4p9n1ye7eHpipu1A5WxjBQeDymlPw/CM9E0v5F/hgiWxW+e8l5u7h43bP
+1BNO6PJXJ/GONiQh4bcL0R763tNIKGVNYHSffW71vyoY6reXdKBNnk91OgjFwHTN
+ALJtr9jy5xy9vKATY7gThVWDhW/uiv8LUICxxZWnCucKvhgB2bLWaHxIOr9YyjaX
+hEVdHgTVXPl5cMXBw+UZLn3vw5EQHuMFAIWR2ZNIhrEvjaPon5qaEveQCDsda39w
+rTr3lheyBGMhTnmA4wNV+lNSLImAc2o78aete0cTsJ619snGODUo9QO2YZ/k7vPS
+mHeK0VrZvnE8uklFJUTDayLoD+SnsxztRITvk/EuRay2P1fG1/qZn7QUIg+ZM4aV
+S8vPrfI9rwu8CRgxmTTtX5ZMez89fy6FlVDITjVNhRrVIc2m3xL03ASTb6NankJo
+En+MLQpCFVKyQy9N72RZNz68KiPH/fraAdq4mL5NAcR4P/6Gg7Sn+qjnf/4l43zZ
++7uzqjwhdtU/YHJ9j8/cow==
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIGBTCCA+2gAwIBAgICEAAwDQYJKoZIhvcNAQELBQAwgZUxCzAJBgNVBAYTAlVT
+MREwDwYDVQQIDAhDb2xvcmFkbzEPMA0GA1UEBwwGRGVudmVyMSQwIgYDVQQKDBtJ
+cGNkbiBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkxJDAiBgNVBAsMG0lwY2RuIENlcnRp
+ZmljYXRlIGF1dGhvcml0eTEWMBQGA1UEAwwNSXBjZG4gUm9vdCBDQTAeFw0xNzEx
+MTYyMDM4MTVaFw0yNzExMTQyMDM4MTVaMIGMMQswCQYDVQQGEwJVUzERMA8GA1UE
+CAwIQ29sb3JhZG8xJDAiBgNVBAoMG0lwY2RuIENlcnRpZmljYXRlIEF1dGhvcml0
+eTEkMCIGA1UECwwbSXBjZG4gQ2VydGlmaWNhdGUgQXV0aG9yaXR5MR4wHAYDVQQD
+DBVJcGNkbiBJbnRlcm1lZGlhdGUgQ0EwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAw
+ggIKAoICAQDKkxQ9hdMtSwfNEBqGPAKzu7CPhH+xu3kL4e+rJ09EB++fxG905mwM
+Ym8s1GC/i1V1hPbOk+zLWXccZhtC49BttsDBVRmagt4q6eeD12AxzVBozWj4YnFy
+ZE04CiZlAIN3qN4TnNT/O3iyvmj58QDIFVO51YNSrr7j2dQRLpoyS6s87kpw9A6T
+24L1pLkmFuAgCLMFPG5HZWyZSStpXOzOc7LITZQXQzunwLazN9Z4Az8zYC9ilO6V
+tNNNc+Y7MpFrTaEFFSsM2+REexuPtCOtT/ZEcOwP884T6ACcUSTv86iE/EFOPgZh
+vTK2D0Nzat3ZTsc5N2vvN0eZm6COnVAvYNwrTWG4v3YUtLr/PEoFm9mtPdSA+Tsi
+LkGFRjwAoAnhVieFAFulQnswbZAaJRc/xS7BJvts/3J9i7l1opqu0Ebm6L8jLeHv
+p/op1TD8LIQkcp7GdsXk4LYH6VopaNOi8yoaEfKWwrXhxBdChHHlYCcfecyD8O39
+8euoGQ0zi/eaCr3MHYU1+a2+5TRPdzHx/l/3V1wxX9hmOGcrwTCtcYRzRjza2UlE
+UacmwBqGyfa1Gn/iOto9yqtRvWlPGq9zJNQzNBJ6iWR7gyb0t820jpdtmFyNB5Pv
+JceHyVyix/7sBUB5GwMO0iGnLPpY9Ix87nYP3itN3jkqahTrT7tHuwIDAQABo2Yw
+ZDAdBgNVHQ4EFgQUIV7iqt3+xYa1Fx/nYzxd1hxvNw0wHwYDVR0jBBgwFoAUWcdI
+BR6t3N8w7yUt/TOfXwmubAgwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8E
+BAMCAYYwDQYJKoZIhvcNAQELBQADggIBAKbd8nKA1hlxCTczTg9PHSdqHVEYWqRD
+dzroOnz0KcIgJF4ncRaN3nna74wIm3nJD/WuwdF8dVbpD4YaeZKhQgmXmYggVH0l
+8IIkdC3qYNTDj4xhg7qZC3pzKuNIg7yHv3Axr/rb9BvpUJxbKo/aln/G6PrbNoQx
+4xb6xlK6WcYORB/UgzF6jKM5CBXaUt2QQmWts7MgnoNzZ4kxsYbuwj3rOPzHIgRY
+YwJt+kh5tlyhHPkgjwUTbMg/Mv/omfzZ3+XMBD2Z69eNd9RHE9XS6AdMKtDiprhg
+TLu+9tOVlydQjZk3KsqFv57/1TwKrt9JFjXk/PPQalXoP3oykoiviacd4MyiBmaW
+i5WbtcxGP5vwaNn267OGlibfQmQgA1VIgDqftrQwe6T/ZwOKXqFqb56gqdW4VdOU
+5bGN0uLXemriuNQolTpVmhNu0bNI5WCiY7c30XN2M5ebcBWDHOr4DOCg+mmX+tJT
+Gi1jvfmA6LOYnyQ8xAV080uVe35NQ10e9my6LuXMiQ7ubvHUS5NwaQCFpLDIvbhf
+2XVc46Nd0V/bolM23AQRlzuo0ISsDSeWSQVM+uQZ+pLe9G5n2MxqFd84Vu489auc
+02I9cHiNahWyXPtvnvMWwImIB30CYhh5ByGWneDo3d5Zj2HAA6FwO67LlIhSe7qz
+axDtcM4nO3QH
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIGEjCCA/qgAwIBAgIJAL2V1hnLWuzgMA0GCSqGSIb3DQEBCwUAMIGVMQswCQYD
+VQQGEwJVUzERMA8GA1UECAwIQ29sb3JhZG8xDzANBgNVBAcMBkRlbnZlcjEkMCIG
+A1UECgwbSXBjZG4gQ2VydGlmaWNhdGUgQXV0aG9yaXR5MSQwIgYDVQQLDBtJcGNk
+biBDZXJ0aWZpY2F0ZSBhdXRob3JpdHkxFjAUBgNVBAMMDUlwY2RuIFJvb3QgQ0Ew
+HhcNMTcxMTE2MjAxOTI0WhcNMjcxMTE0MjAxOTI0WjCBlTELMAkGA1UEBhMCVVMx
+ETAPBgNVBAgMCENvbG9yYWRvMQ8wDQYDVQQHDAZEZW52ZXIxJDAiBgNVBAoMG0lw
+Y2RuIENlcnRpZmljYXRlIEF1dGhvcml0eTEkMCIGA1UECwwbSXBjZG4gQ2VydGlm
+aWNhdGUgYXV0aG9yaXR5MRYwFAYDVQQDDA1JcGNkbiBSb290IENBMIICIjANBgkq
+hkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2HsLknm9wx1V33zttMWn1sFEJyLNMeeW
+hA0dweKChqDVw5lAyIid0lqjnjIEivlAM8zd2NAPZTHFG9BT3unduNcDcWuRgh33
+mlyssEharWtE6U7lzw8RMGWkyWQkJ2E0SxjE/VmKQjH3/4Ak8ShhTZFKEZuweRdg
+j218qUemsOV+ENTsnGUxoAPpr5cGGo4igfO9tpI1g7PWnkYrVFtwsPoy2CKxqh/I
+3F67EZq2yROBy9gBhC5FuZhuvgptvSakNQy/w+9buRffshb69wLsbqQayhjlLqcQ
+Xkch4y6cG8Ylg+hrqzmG3vG4q03YFz8PuMd/uNxeJQAbZJ/sXh7jVQNJitgi6oOy
+j1xVzNKUqb1Mx25DhBy125/l8wGBdsCRUYR6r70NAZRndjkQKV4l3tTQ4+o2rdjd
+C/2Sk2/bHVbytMq4Iz+1sOsIUV3La+R+DWcLA6UonpEocNb8bt5bu4JhRDrnJwPi
+4jRaH+KgxpBTIlZ3aFnSs0I3wkPOgA3DrI6LWxgt3BfPuK9DPma1rc4B1cwSQTNk
+yyUY2boXsnLMMPebF3djwbtYEdqAaixxzzQCVYlhfCEQjqceSd6TJ2SdzH4I3J7x
+OsLz1Lj/92aDeeq77q/c9FidnfNe75zB7gXN/bTtb55ZcTTO8XAEvegxcrw5CnO1
+MnFw6xDf++UCAwEAAaNjMGEwHQYDVR0OBBYEFFnHSAUerdzfMO8lLf0zn18JrmwI
+MB8GA1UdIwQYMBaAFFnHSAUerdzfMO8lLf0zn18JrmwIMA8GA1UdEwEB/wQFMAMB
+Af8wDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBCwUAA4ICAQB+aYWZh+/gCmFy
+oI582AC5+54c7xeLRmtQPmFpAA2Y4iTSeGyjv2g5M9agQ4Ixwue5DluQlsDcDsJw
+lsXVHyAlCf6nDbJOpf5m6ixfvBF+QzEeXjUG74iSCWrApYFmsNsCrlsM/EPJogqu
+7cgGvHwWYNjPzuwoU0AWHO9FgIbDz3Mc15ZlHIQ2T/ixxyBfpIPc5D91k4u/ZWSb
+hO6lsM1iEAvv9ToUXkKttCQ0fN34BwYX47AxC71tSt9/VKIDIEXjzqJJpbJdBGSm
+WuiZHWwBzVw7k5y+S+wM5vZ/OMw0thL+I53zmkxGEf3tMH4POeKvX/u19n0TFk/1
+96cztVmTB6W67mb9zZ8ySeJtD9uXE44ycxk93gTnarkIGdTf8XonCVlkHGpb6TWM
+5E7aWCoVbqQRkF1rqPza8hRJGH1EGkmdbkuyUMLmQ1FJK9f/xFIcrdBGpMlxyOoL
+MSeFeagoSLNq5xzjucF/6mkAUJ8UZAxrSGmaDEaSt1/qJRHovHct2b5FWZLuRt0g
+fDsGoKT8IFuapSsmFEInvD0WKXDSPlU8rTy1ZBDlCqp3eNH4tCfLahk7vLA0Jbf7
+ULrtDnrNfjxUYFcF0RcauR1dlrQQRAs31QOzX+JOr4gUG7yXa3j64nx2G5MpLgSo
+OEUjfakK71+V/HbQt477zR4k7cRbiA==
+-----END CERTIFICATE-----
+`
+	rootCA = `
+-----BEGIN CERTIFICATE-----
+MIIGEjCCA/qgAwIBAgIJAL2V1hnLWuzgMA0GCSqGSIb3DQEBCwUAMIGVMQswCQYD
+VQQGEwJVUzERMA8GA1UECAwIQ29sb3JhZG8xDzANBgNVBAcMBkRlbnZlcjEkMCIG
+A1UECgwbSXBjZG4gQ2VydGlmaWNhdGUgQXV0aG9yaXR5MSQwIgYDVQQLDBtJcGNk
+biBDZXJ0aWZpY2F0ZSBhdXRob3JpdHkxFjAUBgNVBAMMDUlwY2RuIFJvb3QgQ0Ew
+HhcNMTcxMTE2MjAxOTI0WhcNMjcxMTE0MjAxOTI0WjCBlTELMAkGA1UEBhMCVVMx
+ETAPBgNVBAgMCENvbG9yYWRvMQ8wDQYDVQQHDAZEZW52ZXIxJDAiBgNVBAoMG0lw
+Y2RuIENlcnRpZmljYXRlIEF1dGhvcml0eTEkMCIGA1UECwwbSXBjZG4gQ2VydGlm
+aWNhdGUgYXV0aG9yaXR5MRYwFAYDVQQDDA1JcGNkbiBSb290IENBMIICIjANBgkq
+hkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2HsLknm9wx1V33zttMWn1sFEJyLNMeeW
+hA0dweKChqDVw5lAyIid0lqjnjIEivlAM8zd2NAPZTHFG9BT3unduNcDcWuRgh33
+mlyssEharWtE6U7lzw8RMGWkyWQkJ2E0SxjE/VmKQjH3/4Ak8ShhTZFKEZuweRdg
+j218qUemsOV+ENTsnGUxoAPpr5cGGo4igfO9tpI1g7PWnkYrVFtwsPoy2CKxqh/I
+3F67EZq2yROBy9gBhC5FuZhuvgptvSakNQy/w+9buRffshb69wLsbqQayhjlLqcQ
+Xkch4y6cG8Ylg+hrqzmG3vG4q03YFz8PuMd/uNxeJQAbZJ/sXh7jVQNJitgi6oOy
+j1xVzNKUqb1Mx25DhBy125/l8wGBdsCRUYR6r70NAZRndjkQKV4l3tTQ4+o2rdjd
+C/2Sk2/bHVbytMq4Iz+1sOsIUV3La+R+DWcLA6UonpEocNb8bt5bu4JhRDrnJwPi
+4jRaH+KgxpBTIlZ3aFnSs0I3wkPOgA3DrI6LWxgt3BfPuK9DPma1rc4B1cwSQTNk
+yyUY2boXsnLMMPebF3djwbtYEdqAaixxzzQCVYlhfCEQjqceSd6TJ2SdzH4I3J7x
+OsLz1Lj/92aDeeq77q/c9FidnfNe75zB7gXN/bTtb55ZcTTO8XAEvegxcrw5CnO1
+MnFw6xDf++UCAwEAAaNjMGEwHQYDVR0OBBYEFFnHSAUerdzfMO8lLf0zn18JrmwI
+MB8GA1UdIwQYMBaAFFnHSAUerdzfMO8lLf0zn18JrmwIMA8GA1UdEwEB/wQFMAMB
+Af8wDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBCwUAA4ICAQB+aYWZh+/gCmFy
+oI582AC5+54c7xeLRmtQPmFpAA2Y4iTSeGyjv2g5M9agQ4Ixwue5DluQlsDcDsJw
+lsXVHyAlCf6nDbJOpf5m6ixfvBF+QzEeXjUG74iSCWrApYFmsNsCrlsM/EPJogqu
+7cgGvHwWYNjPzuwoU0AWHO9FgIbDz3Mc15ZlHIQ2T/ixxyBfpIPc5D91k4u/ZWSb
+hO6lsM1iEAvv9ToUXkKttCQ0fN34BwYX47AxC71tSt9/VKIDIEXjzqJJpbJdBGSm
+WuiZHWwBzVw7k5y+S+wM5vZ/OMw0thL+I53zmkxGEf3tMH4POeKvX/u19n0TFk/1
+96cztVmTB6W67mb9zZ8ySeJtD9uXE44ycxk93gTnarkIGdTf8XonCVlkHGpb6TWM
+5E7aWCoVbqQRkF1rqPza8hRJGH1EGkmdbkuyUMLmQ1FJK9f/xFIcrdBGpMlxyOoL
+MSeFeagoSLNq5xzjucF/6mkAUJ8UZAxrSGmaDEaSt1/qJRHovHct2b5FWZLuRt0g
+fDsGoKT8IFuapSsmFEInvD0WKXDSPlU8rTy1ZBDlCqp3eNH4tCfLahk7vLA0Jbf7
+ULrtDnrNfjxUYFcF0RcauR1dlrQQRAs31QOzX+JOr4gUG7yXa3j64nx2G5MpLgSo
+OEUjfakK71+V/HbQt477zR4k7cRbiA==
+-----END CERTIFICATE-----
+`
+)
+
+func TestVerifyAndEncodeCertificate(t *testing.T) {
+
+	// should fail bad base64 data
+	dat, _, err := verifyCertificate(BadData, "")
+	if err == nil {
+		t.Errorf("Unexpected result, there should have been a base64 decoding failure")
+	}
+
+	// should fail, can't verify self signed cert against this rootCA
+	dat, _, err = verifyCertificate(SelfSignedCertOnly, rootCA)
+	if err == nil {
+		t.Errorf("Unexpected result, a certificate verification error should have occured")
+	}
+
+	// should pass, unknown authority is just a warning not an error
+	dat, unknownAuth, err := verifyCertificate(GoodTLSKeys, "")
+	if err != nil {
+		t.Errorf("Test failure: %s", err)
+	}
+	if !unknownAuth {
+		t.Errorf("Unexpected result, certificate verification should have detected unknown authority")
+	}
+
+	// should pass
+	dat, _, err = verifyCertificate(GoodTLSKeys, rootCA)
+	if err != nil {
+		t.Errorf("Test failure: %s", err)
+	}
+
+	certs := strings.SplitAfter(dat, PemCertEndMarker)
+	length := len(certs) - 1
+	if length != 2 {
+		t.Errorf("Test failure: expected 2 certs from verifyCertificate(), got: %d ", length)
+	}
+}

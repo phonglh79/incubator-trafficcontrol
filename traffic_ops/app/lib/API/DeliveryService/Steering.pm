@@ -43,12 +43,10 @@ sub find_steering {
 
     my %steering;
 
-    my $rs_data = $self->db->resultset('SteeringView')->search({}, {order_by => ['steering_xml_id', 'target_xml_id']});
+    my %criteria = length $steering_xml_id ? (steering_xml_id => $steering_xml_id) : ();
+    my $rs_data = $self->db->resultset('SteeringView')->search(\%criteria, {order_by => ['steering_xml_id', 'target_xml_id']});
 
     while ( my $row = $rs_data->next ) {
-        if ($steering_xml_id && $row->steering_xml_id ne $steering_xml_id) {
-            next;
-        }
 
         if (!&is_admin($self)) {
             my $name = $self->current_user()->{username};
@@ -61,7 +59,7 @@ sub find_steering {
         }
 
         my $target_id = $row->target_id;
-        
+
 
         if (! exists($steering{$row->steering_xml_id})) {
             my $ds = $self->db->resultset('Deliveryservice')->search( { xml_id => $row->steering_xml_id } )->single();
@@ -69,7 +67,7 @@ sub find_steering {
             if ($ds->type->name =~ /CLIENT_STEERING/) {
                 $client_steering = '1';
             }
-            else { 
+            else {
                 $client_steering = '0';
             }
             $steering{$row->steering_xml_id} = {"deliveryService" => $row->steering_xml_id, "clientSteering" => \$client_steering};
@@ -92,8 +90,6 @@ sub find_steering {
 
         my $targets = $steering_entry->{"targets"};
 
-        my $type = $self->get_type($row->type);
-
         if ( $row->type eq "STEERING_ORDER" ) {
             push(@{$targets},{
             'deliveryService' => $row->target_xml_id,
@@ -101,10 +97,32 @@ sub find_steering {
             'weight'  => 0
             });
         }
-        else {
+        elsif ( $row->type eq "STEERING_WEIGHT" ) {
             push(@{$targets},{
             'deliveryService' => $row->target_xml_id,
             'order' => 0,
+            'weight'  => $row->value
+            });
+        }
+        elsif ( $row->type eq "STEERING_GEO_ORDER" ) {
+            my $coords = get_primary_origin_coordinates($self, $row->target_id);
+            push(@{$targets},{
+            'deliveryService' => $row->target_xml_id,
+            'order' => 0,
+            'geoOrder' => $row->value,
+            'latitude' => $coords->{lat},
+            'longitude' => $coords->{lon},
+            'weight'  => 0
+            });
+        }
+        elsif ( $row->type eq "STEERING_GEO_WEIGHT" ) {
+            my $coords = get_primary_origin_coordinates($self, $row->target_id);
+            push(@{$targets},{
+            'deliveryService' => $row->target_xml_id,
+            'order' => 0,
+            'geoOrder' => 0,
+            'latitude' => $coords->{lat},
+            'longitude' => $coords->{lon},
             'weight'  => $row->value
             });
         }
@@ -129,60 +147,26 @@ sub find_steering {
     return $response;
 }
 
-sub add() {
+sub get_primary_origin_coordinates {
     my $self = shift;
+    my $ds_id = shift;
 
-    if (!&is_admin($self)) {
-        return $self->render(json => {"message" => "unauthorized"}, status => 401);
+    my %coordinates = (lat => 0.0, lon => 0.0);
+
+    my $origin_rs = $self->db->resultset('Origin')->find(
+        { deliveryservice => $ds_id, is_primary => 1 },
+        { prefetch => 'coordinate' });
+
+    if ( !defined($origin_rs) || !defined($origin_rs->coordinate) ) {
+        return \%coordinates;
     }
 
-    my $steering_xml_id = $self->req->json->{'deliveryService'};
+    $coordinates{lat} = $origin_rs->coordinate->latitude + 0.0;
+    $coordinates{lon} = $origin_rs->coordinate->longitude + 0.0;
 
-    if (!$steering_xml_id || !$self->req->json->{'targets'}) {
-        return $self->render(json => {"message" => "bad request"}, status => 400);
-    }
-
-    if (!(ref($self->req->json->{'targets'}) eq "ARRAY")) {
-        return $self->render(json => {"message" => "bad request"}, status => 400);
-    }
-
-    my $target_xml_ids = [];
-    foreach my $target (@{$self->req->json->{'targets'}}) {
-        if (!(ref($target) eq "HASH") || !$target->{'deliveryService'}) {
-            return $self->render(json => {"message" => "bad request"}, status => 400);
-        }
-        push(@{$target_xml_ids}, $target->{'deliveryService'});
-    }
-
-    my $ds = $self->get_ds_id($steering_xml_id);
-
-    if (!$ds) {
-        return $self->render(json => {}, status => 409);
-    }
-
-    my $rows = [];
-
-    foreach my $xml_id (@{$target_xml_ids}) {
-        my $target_ds = $self->get_ds_id($xml_id);
-
-        if (!$target_ds) {
-            return $self->render(json => {}, status => 409);
-        }
-
-        push(@{$rows}, [$ds, $target_ds])
-    }
-
-    my $transaction_guard = $self->db->txn_scope_guard;
-
-    for my $row (@{$rows}) {
-        $self->db->resultset('SteeringTarget')->create({deliveryservice => $row->[0], target => $row->[1], weight => 0});
-    }
-
-    $transaction_guard->commit;
-
-    $self->res->headers->header('Location', '/internal/api/1.2/steering/' . $steering_xml_id . ".json");
-    return $self->render(json => {}, status => 201);
+    return \%coordinates;
 }
+
 
 sub get_ds_id {
     my $self = shift;
@@ -205,6 +189,8 @@ sub get_type {
     return $type;
 }
 
+# NOTE: STEERING_GEO* types are deliberately ignored in the following endpoint b/c it's soon to be deprecated (use
+# the non-internal PUT endpoint instead)
 sub update() {
     my $self = shift;
 

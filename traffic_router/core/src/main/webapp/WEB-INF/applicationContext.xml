@@ -46,29 +46,12 @@
 		</constructor-arg>
 	</bean>
 
-	<bean id="statTracker" class="com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker">
-		<property name="dnsRoutingName" value="$[dns.routing.name:edge]" />
-		<property name="httpRoutingName" value="$[http.routing.name:tr]" />
-	</bean>
+	<bean id="statTracker" class="com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker"/>
 
 	<bean name="staticZoneManagerZoneDirectoryInitializer" class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
 		<property name="staticMethod" value="com.comcast.cdn.traffic_control.traffic_router.core.dns.ZoneManager.setZoneDirectory"/>
 		<property name="arguments">
 			<list><ref bean="autoZonesDir"/></list>
-		</property>
-	</bean>
-
-	<bean name="staticZoneManagerHttpRoutingNameInitializer" class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-		<property name="staticMethod" value="com.comcast.cdn.traffic_control.traffic_router.core.dns.ZoneManager.setHttpRoutingName"/>
-		<property name="arguments">
-			<list><value>$[http.routing.name:tr]</value></list>
-		</property>
-	</bean>
-
-	<bean name="staticZoneManagerDnsRoutingNameInitializer" class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
-		<property name="staticMethod" value="com.comcast.cdn.traffic_control.traffic_router.core.dns.ZoneManager.setDnsRoutingName"/>
-		<property name="arguments">
-			<list><value>$[dns.routing.name:edge]</value></list>
 		</property>
 	</bean>
 
@@ -79,6 +62,7 @@
 		<property name="federationRegistry" ref="federationsRegistry" />
 		<property name="geolocationService" ref="maxmindGeolocationService" />
 		<property name="geolocationService6" ref="maxmindGeolocationService" />
+		<property name="anonymousIpService" ref="anonymousIpDatabaseService" />
 		<property name="steeringRegistry" ref="steeringRegistry" />
 	</bean>
 
@@ -126,7 +110,10 @@
 		<property name="trafficRouterManager" ref="trafficRouterManager" />
 		<property name="geolocationDatabaseUpdater" ref="geolocationDatabaseUpdater" />
 		<property name="networkUpdater" ref="networkUpdater" />
+		<property name="deepNetworkUpdater" ref="deepNetworkUpdater" />
 		<property name="regionalGeoUpdater" ref="regionalGeoUpdater" />
+		<property name="anonymousIpConfigUpdater" ref="anonymousIpConfigUpdater" />
+		<property name="anonymousIpDatabaseUpdater" ref="anonymousIpDatabaseUpdater" />
 		<property name="statTracker" ref="statTracker" />
 		<property name="configDir" value="/opt/traffic_router/conf" />
 		<property name="federationsWatcher" ref="federationsWatcher" />
@@ -143,6 +130,7 @@
 	</bean>
 
 	<bean id="maxmindGeolocationService" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.MaxmindGeolocationService"/>
+	<bean id="anonymousIpDatabaseService" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.AnonymousIpDatabaseService"/>
 	
 	<bean id="geolocationDatabaseUpdater" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.GeolocationDatabaseUpdater" init-method="init">
 		<property name="databasesDirectory" ref="databasesDir"/>
@@ -161,6 +149,14 @@
 		<property name="trafficRouterManager" ref="trafficRouterManager" />
 	</bean>
 
+	<bean id="deepNetworkUpdater" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkUpdater" init-method="init">
+		<property name="executorService" ref="ScheduledExecutorService" />
+		<property name="databasesDirectory" ref="databasesDir" />
+		<property name="databaseName" value="$[cache.dczmap.database:dczmap.json]" />
+		<property name="pollingInterval" value="$[cache.dczmap.database.refresh.period:10800000]" />
+		<property name="trafficRouterManager" ref="trafficRouterManager" />
+	</bean>
+
 	<bean id="regionalGeoUpdater" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.RegionalGeoUpdater"
 		init-method="init">
 		<property name="executorService" ref="ScheduledExecutorService" />
@@ -168,6 +164,25 @@
 		<property name="databaseName" value="$[cache.regionalgeo.database:regional_geoblock.json]" />
 		<property name="pollingInterval" value="$[cache.regionalgeo.database.refresh.period:10800000]" />
 		<property name="trafficRouterManager" ref="trafficRouterManager" />
+	</bean>
+
+	<bean id="anonymousIpConfigUpdater" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.AnonymousIpConfigUpdater"
+		init-method="init">
+		<property name="executorService" ref="ScheduledExecutorService" />
+		<property name="databasesDirectory" ref="databasesDir" />
+		<property name="databaseName" value="$[cache.anonymousip.database:anonymous_ip.json]" />
+		<property name="pollingInterval" value="$[cache.anonymousip.database.refresh.period:10800000]" />
+		<property name="trafficRouterManager" ref="trafficRouterManager" />
+	</bean>
+
+	<bean id="anonymousIpDatabaseUpdater" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.AnonymousIpDatabaseUpdater"
+		init-method="init">
+		<property name="executorService" ref="ScheduledExecutorService" />
+		<property name="databasesDirectory" ref="databasesDir" />
+		<property name="databaseName" value="$[cache.anonymousip.database:GeoIP2-Anonymous-IP.mmdb]" />
+		<property name="pollingInterval" value="$[cache.anonymousip.database.refresh.period:10800000]" />
+		<property name="trafficRouterManager" ref="trafficRouterManager" />
+		<property name="anonymousIpDatabaseService" ref="anonymousIpDatabaseService" />
 	</bean>
 
 	<bean id="ScheduledExecutorService" class="java.util.concurrent.Executors"
@@ -199,7 +214,7 @@
 	</bean>
 
 	<bean id="languidState" class="com.comcast.cdn.traffic_control.traffic_router.core.util.LanguidState" init-method="init"
-		depends-on="geolocationDatabaseUpdater, networkUpdater, regionalGeoUpdater, MonitorWatcher, trafficRouterManager, ConfigHandler">
+		depends-on="geolocationDatabaseUpdater, networkUpdater, deepNetworkUpdater, regionalGeoUpdater, MonitorWatcher, trafficRouterManager, ConfigHandler">
 		<!-- todo: add bean refs that can be validated inside the method called -->
 		<property name="trafficRouterManager" ref="trafficRouterManager" />
 	</bean>

@@ -17,6 +17,7 @@ package UI::Steering;
 #
 
 # JvD Note: you always want to put Utils as the first use. Sh*t don't work if it's after the Mojo lines.
+use strict;
 use UI::Utils;
 use Mojo::Base 'Mojolicious::Controller';
 use Mojo::Parameters;
@@ -39,10 +40,10 @@ sub index {
 
 	#get the target delivery service IDs to pass to get_deliveryservices
 	my @targets;
-	foreach my $i ( keys @steering ) {
-		push ( @targets, $steering[$i]->{'target_id'} );
+	foreach my $steering ( @steering ) {
+		push ( @targets, $steering->{'target_id'} );
 	}
-
+	
 	my %ds_data = $self->get_deliveryservices($ds_id, \@targets);
 
 	&navbarpage($self);
@@ -82,6 +83,7 @@ sub get_target_data {
 	my @weight_steering;
 	my @pos_order_steering;
 	my @neg_order_steering;
+	my @geo_steering;
 
 	my $target_rs = $self->db->resultset('SteeringTarget')->search( { deliveryservice => $ds_id } );
 
@@ -89,8 +91,8 @@ sub get_target_data {
 		my $i = 0;
 		while ( my $row = $target_rs->next ) {
 			my $t = $steering_obj->{"target_$i"};
-			$t->{'target_id'} = $row->target;
-			$t->{'target_name'}   = $self->get_ds_name( $row->target );
+			$t->{'target_id'} = $row->target->id;
+			$t->{'target_name'}   = $self->get_ds_name( $row->target->id );
 			$t->{'target_value'}   = $row->value;
 			if (!defined($t->{'target_value'})) { $t->{'target_value'} = 0; }
 			$t->{'target_type'}   = $row->type->id;
@@ -100,6 +102,9 @@ sub get_target_data {
 			elsif ( $row->type->name eq "STEERING_ORDER" && $row->value >= 0 ) {
 				push (@pos_order_steering, $t);
 			}
+			elsif ( $row->type->name =~ m/^STEERING_GEO/ ) {
+				push (@geo_steering, $t);
+			}
 			else { push (@weight_steering, $t); }
 			$i++;
 		}
@@ -108,8 +113,8 @@ sub get_target_data {
 		@neg_order_steering = sort { $a->{target_value} <=> $b->{target_value} } @neg_order_steering;
 		@pos_order_steering = sort { $a->{target_value} <=> $b->{target_value} } @pos_order_steering;
 
-		#push everything into an a single array - negative order values first, weights second, positive order last.
-		push (@steering, @neg_order_steering, @weight_steering, @pos_order_steering);
+		#push everything into an a single array - negative order values 1st, geo 2nd, weights 3rd, positive order last.
+		push (@steering, @neg_order_steering, @geo_steering, @weight_steering, @pos_order_steering);
 	}
 	return @steering;
 }
@@ -172,7 +177,7 @@ sub update {
 	}
 	#validate the array, then replace the data in the database with the array data.
 	if ( $self->is_valid(\@targets) ) {
-		#delete current entries
+		#delete current entries 
 		my $delete = $self->db->resultset('SteeringTarget')
 			->search( { deliveryservice => $ds_id } );
 		if ( defined($delete) ) {
@@ -180,12 +185,12 @@ sub update {
 		}
 		
 		#add new entries
-		foreach my $i ( keys @targets ) {
+		foreach my $target ( @targets ) {
 			my $insert = $self->db->resultset('SteeringTarget')->create(
 				{   deliveryservice => $ds_id,
-					target          => $targets[$i]->{'target_id'},
-					value           => $targets[$i]->{'target_value'},
-					type            => $targets[$i]->{'target_type'}
+					target          => $target->{'target_id'},
+					value           => $target->{'target_value'},
+					type            => $target->{'target_type'}
 				}
 			);
 			$insert->insert();
@@ -204,8 +209,8 @@ sub update {
 		my @steering = $self->get_target_data($ds_id, $type_ids);
 
 		my @targets;
-		foreach my $i ( keys @steering ) {
-			push ( @targets, $steering[$i]->{'target_id'} );
+		foreach my $steering ( @steering ) {
+			push ( @targets, $steering->{'target_id'} );
 		}
 
 		my %ds_data = $self->get_deliveryservices($ds_id, \@targets);
@@ -231,8 +236,8 @@ sub is_valid {
 	my @targets = @{$_[0]};
 	my %tracker;
 
-	foreach my $i ( keys @targets ) {
-		my $t = $targets[$i];
+	foreach my $target ( @targets ) {
+		my $t = $target;
 		my $t_name = $self->db->resultset('Type')->search( { id => "$t->{'target_type'}" } )->get_column('name')->single();
 		if ( $t_name eq "STEERING_ORDER" && $t->{'target_value'} ne int($t->{'target_value'})) {
 			$self->flash(message => "STEERING_ORDER values must be integers." );

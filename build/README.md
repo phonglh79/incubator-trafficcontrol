@@ -1,3 +1,22 @@
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one
+    or more contributor license agreements.  See the NOTICE file
+    distributed with this work for additional information
+    regarding copyright ownership.  The ASF licenses this file
+    to you under the Apache License, Version 2.0 (the
+    "License"); you may not use this file except in compliance
+    with the License.  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing,
+    software distributed under the License is distributed on an
+    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, either express or implied.  See the License for the
+    specific language governing permissions and limitations
+    under the License.
+-->
+
 
 # Rpm Build Instructions
 
@@ -14,11 +33,11 @@ You can build from any repository/branch combination,  but that repository must 
 following `docker-compose` commands, you can limit building to one or more sub-projects by supplying arguments at the end.  If none
 are supplied,  then *all* will be run.
 
-Starting at the top-level of your trafficcontrol git clone (e.g. `~/src/incubator-trafficcontrol`):
+Starting at the top-level of your trafficcontrol git clone (e.g. `~/src/trafficcontrol`):
 
 > cd infrastructure/docker/build
 > docker-compose build traffic_ops_build traffic_monitor_build ...
-> GITREPO=https://github.com/username/incubator-trafficcontrol BRANCH=mybranch docker-compose up traffic_ops_build traffic_monitor_build ...
+> GITREPO=https://github.com/username/trafficcontrol BRANCH=mybranch docker-compose up traffic_ops_build traffic_monitor_build ...
 
 The resulting `.rpm` files will be created in the `artifacts` directory.
 
@@ -58,8 +77,7 @@ At the conclusion of the build,  all rpms are copied into the __$WORKSPACE/dist_
 * go 1.7 or higher
 
 #### traffic_monitor and traffic_router:
-* jdk 8.0 or higher
-  * CentOS 6 (java-1.8.0-openjdk, java-1.8.0-openjdk-devel)
+* java-1.8.0-openjdk and java-1.8.0-openjdk-devel
 * apache-maven 3.3.1 or higher
 
 #### traffic_monitor_golang:

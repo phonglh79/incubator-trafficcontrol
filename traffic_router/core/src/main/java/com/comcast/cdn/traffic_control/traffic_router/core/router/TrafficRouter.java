@@ -21,22 +21,27 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import com.comcast.cdn.traffic_control.traffic_router.configuration.ConfigurationListener;
+import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringResult;
 import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringTarget;
 import com.comcast.cdn.traffic_control.traffic_router.core.ds.Steering;
 import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringRegistry;
 import com.comcast.cdn.traffic_control.traffic_router.core.hash.ConsistentHasher;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.MaxmindGeolocationService;
+import com.comcast.cdn.traffic_control.traffic_router.core.util.JsonUtils;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.log4j.Logger;
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.xbill.DNS.Name;
@@ -44,11 +49,13 @@ import org.xbill.DNS.Zone;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.Cache;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheLocation;
+import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheLocation.LocalizationMethod;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheRegister;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.InetRecord;
 import com.comcast.cdn.traffic_control.traffic_router.core.dns.ZoneManager;
 import com.comcast.cdn.traffic_control.traffic_router.core.dns.DNSAccessRecord;
 import com.comcast.cdn.traffic_control.traffic_router.core.ds.DeliveryService;
+import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringGeolocationComparator;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.FederationRegistry;
 import com.comcast.cdn.traffic_control.traffic_router.geolocation.Geolocation;
 import com.comcast.cdn.traffic_control.traffic_router.geolocation.GeolocationException;
@@ -65,6 +72,8 @@ import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Tr
 import com.comcast.cdn.traffic_control.traffic_router.core.util.TrafficOpsUtils;
 import com.comcast.cdn.traffic_control.traffic_router.core.util.CidrAddress;
 import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Track.ResultDetails;
+import com.comcast.cdn.traffic_control.traffic_router.core.loc.AnonymousIp;
+import com.comcast.cdn.traffic_control.traffic_router.core.loc.AnonymousIpDatabaseService;
 
 public class TrafficRouter {
 	public static final Logger LOGGER = Logger.getLogger(TrafficRouter.class);
@@ -74,6 +83,7 @@ public class TrafficRouter {
 	private final ZoneManager zoneManager;
 	private final GeolocationService geolocationService;
 	private final GeolocationService geolocationService6;
+	private final AnonymousIpDatabaseService anonymousIpService;
 	private final FederationRegistry federationRegistry;
 	private final boolean consistentDNSRouting;
 
@@ -85,19 +95,36 @@ public class TrafficRouter {
 	private final ConsistentHasher consistentHasher = new ConsistentHasher();
 	private SteeringRegistry steeringRegistry;
 
+	private final Map<String, Geolocation> defaultGeolocationsOverride = new HashMap<String, Geolocation>();
+
 	public TrafficRouter(final CacheRegister cr, 
 			final GeolocationService geolocationService, 
-			final GeolocationService geolocationService6, 
+			final GeolocationService geolocationService6,
+			final AnonymousIpDatabaseService anonymousIpService,
 			final StatTracker statTracker,
 			final TrafficOpsUtils trafficOpsUtils,
 			final FederationRegistry federationRegistry,
-			final TrafficRouterManager trafficRouterManager) throws IOException, JSONException {
+			final TrafficRouterManager trafficRouterManager) throws IOException {
 		this.cacheRegister = cr;
 		this.geolocationService = geolocationService;
 		this.geolocationService6 = geolocationService6;
+		this.anonymousIpService = anonymousIpService;
 		this.federationRegistry = federationRegistry;
-		this.consistentDNSRouting = cr.getConfig().optBoolean("consistent.dns.routing", false); // previous/default behavior
+		this.consistentDNSRouting = JsonUtils.optBoolean(cr.getConfig(), "consistent.dns.routing");
 		this.zoneManager = new ZoneManager(this, statTracker, trafficOpsUtils, trafficRouterManager);
+
+		if (cr.getConfig() != null) {
+			// maxmindDefaultOverride: {countryCode: , lat: , long: }
+			final JsonNode geolocations = cr.getConfig().get("maxmindDefaultOverride");
+			if (geolocations != null) {
+				for (final JsonNode geolocation : geolocations) {
+					final String countryCode = JsonUtils.optString(geolocation, "countryCode");
+					final double lat = JsonUtils.optDouble(geolocation, "lat");
+					final double longitude = JsonUtils.optDouble(geolocation, "long");
+					defaultGeolocationsOverride.put(countryCode, new Geolocation(lat, longitude));
+				}
+			}
+		}
 	}
 
 	public ZoneManager getZoneManager() {
@@ -146,22 +173,22 @@ public class TrafficRouter {
 		return deliveryService;
 	}
 
-	boolean setState(final JSONObject states) throws UnknownHostException {
-		setCacheStates(states.optJSONObject("caches"));
-		setDsStates(states.optJSONObject("deliveryServices"));
+	boolean setState(final JsonNode states) throws UnknownHostException {
+		setCacheStates(states.get("caches"));
+		setDsStates(states.get("deliveryServices"));
 		return true;
 	}
-	private boolean setDsStates(final JSONObject dsStates) {
+	private boolean setDsStates(final JsonNode dsStates) {
 		if(dsStates == null) {
 			return false;
 		}
 		final Map<String, DeliveryService> dsMap = cacheRegister.getDeliveryServices();
 		for (final String dsName : dsMap.keySet()) {
-			dsMap.get(dsName).setState(dsStates.optJSONObject(dsName));
+			dsMap.get(dsName).setState(dsStates.get(dsName));
 		}
 		return true;
 	}
-	private boolean setCacheStates(final JSONObject cacheStates) {
+	private boolean setCacheStates(final JsonNode cacheStates) {
 		if(cacheStates == null) {
 			return false;
 		}
@@ -169,7 +196,7 @@ public class TrafficRouter {
 		if(cacheMap == null) { return false; }
 		for (final String cacheName : cacheMap.keySet()) {
 			final String monitorCacheName = cacheName.replaceFirst("@.*", "");
-			final JSONObject state = cacheStates.optJSONObject(monitorCacheName);
+			final JsonNode state = cacheStates.get(monitorCacheName);
 			cacheMap.get(cacheName).setState(state);
 		}
 		return true;
@@ -180,6 +207,10 @@ public class TrafficRouter {
 
 	public GeolocationService getGeolocationService() {
 		return geolocationService;
+	}
+
+	public AnonymousIpDatabaseService getAnonymousIpDatabaseService() {
+		return anonymousIpService;
 	}
 
 	public Geolocation getLocation(final String clientIP) throws GeolocationException {
@@ -223,7 +254,8 @@ public class TrafficRouter {
 		int locationsTested = 0;
 
 		final int locationLimit = ds.getLocationLimit();
-		final List<CacheLocation> cacheLocations1 = ds.filterAvailableLocations(getCacheRegister().getCacheLocations());
+		final List<CacheLocation> geoEnabledCacheLocations = filterEnabledLocations(getCacheRegister().getCacheLocations(), LocalizationMethod.GEO);
+		final List<CacheLocation> cacheLocations1 = ds.filterAvailableLocations(geoEnabledCacheLocations);
 		final List<CacheLocation> cacheLocations = orderCacheLocations(cacheLocations1, clientLocation);
 
 		for (final CacheLocation location : cacheLocations) {
@@ -243,9 +275,29 @@ public class TrafficRouter {
 
 		return null;
 	}
-	protected List<Cache> selectCaches(final Request request, final DeliveryService ds, final Track track) throws GeolocationException {
-		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds);
-		List<Cache> caches = selectCachesByCZ(ds, cacheLocation, track);
+
+	@SuppressWarnings("PMD.CyclomaticComplexity")
+	protected List<Cache> selectCaches(final HTTPRequest request, final DeliveryService ds, final Track track) throws GeolocationException {
+		CacheLocation cacheLocation;
+		ResultType result = ResultType.CZ;
+		final boolean useDeep = (ds.getDeepCache() == DeliveryService.DeepCachingType.ALWAYS);
+
+		if (useDeep) {
+			// Deep caching is enabled. See if there are deep caches available
+			cacheLocation = getDeepCoverageZoneCacheLocation(request.getClientIP(), ds);
+			if (cacheLocation != null && cacheLocation.getCaches().size() != 0) {
+				// Found deep caches for this client, and there are caches that might be available there.
+				result = ResultType.DEEP_CZ;
+			} else {
+				// No deep caches for this client, would have used them if there were any. Fallback to regular CZ
+				cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds);
+			}
+		} else {
+			// Deep caching not enabled for this Delivery Service; use the regular CZ
+			cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, useDeep, track);
+		}
+
+		List<Cache>caches = selectCachesByCZ(ds, cacheLocation, track, result);
 
 		if (caches != null) {
 			return caches;
@@ -259,7 +311,8 @@ public class TrafficRouter {
 				track.setResult(ResultType.MISS);
 				track.setResultDetails(ResultDetails.DS_CZ_ONLY);
 			}
-		} else {
+		} else if (track.continueGeo) { 
+			// continue Geo can be disabled when backup group is used -- ended up an empty cache list if reach here
 			caches = selectCachesByGeo(request.getClientIP(), ds, cacheLocation, track);
 		}
 
@@ -267,7 +320,6 @@ public class TrafficRouter {
 	}
 
 	public List<Cache> selectCachesByGeo(final String clientIp, final DeliveryService deliveryService, final CacheLocation cacheLocation, final Track track) throws GeolocationException {
-
 		Geolocation clientLocation = null;
 
 		try {
@@ -289,6 +341,10 @@ public class TrafficRouter {
 			}
 		}
 
+		if (clientLocation.isDefaultLocation() && defaultGeolocationsOverride.containsKey(clientLocation.getCountryCode())) {
+			clientLocation = defaultGeolocationsOverride.get(clientLocation.getCountryCode());
+		}
+
 		final List<Cache> caches = getCachesByGeo(deliveryService, clientLocation, track);
 
 		if (caches == null || caches.isEmpty()) {
@@ -299,12 +355,20 @@ public class TrafficRouter {
 		return caches;
 	}
 
+	@SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
 	public DNSRouteResult route(final DNSRequest request, final Track track) throws GeolocationException {
 		track.setRouteType(RouteType.DNS, request.getHostname());
 
 		final DeliveryService ds = selectDeliveryService(request, false);
 
 		if (ds == null) {
+			track.setResult(ResultType.STATIC_ROUTE);
+			track.setResultDetails(ResultDetails.DS_NOT_FOUND);
+			return null;
+		}
+
+		if (!ds.getRoutingName().equalsIgnoreCase(request.getHostname().split("\\.")[0])) {
+			// request matched the Delivery Service but is using the wrong routing name
 			track.setResult(ResultType.STATIC_ROUTE);
 			track.setResultDetails(ResultDetails.DS_NOT_FOUND);
 			return null;
@@ -317,7 +381,7 @@ public class TrafficRouter {
 			return result;
 		}
 
-		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds);
+		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, false, track);
 		List<Cache> caches = selectCachesByCZ(ds, cacheLocation, track);
 
 		if (caches != null) {
@@ -346,7 +410,9 @@ public class TrafficRouter {
 			LOGGER.error("Bad client address: '" + request.getClientIP() + "'");
 		}
 
-		caches = selectCachesByGeo(request.getClientIP(), ds, cacheLocation, track);
+		if (track.continueGeo) {
+			caches = selectCachesByGeo(request.getClientIP(), ds, cacheLocation, track);
+		}
 
 		if (caches != null) {
 			track.setResult(ResultType.GEO);
@@ -426,6 +492,10 @@ public class TrafficRouter {
 	}
 
 	private List<Cache> selectCachesByCZ(final DeliveryService ds, final CacheLocation cacheLocation, final Track track) {
+		return selectCachesByCZ(ds, cacheLocation, track, ResultType.CZ); // ResultType.CZ was the original default before DDC
+	}
+
+	private List<Cache> selectCachesByCZ(final DeliveryService ds, final CacheLocation cacheLocation, final Track track, final ResultType result) {
 		if (cacheLocation == null || ds == null || !ds.isLocationAvailable(cacheLocation)) {
 			return null;
 		}
@@ -433,7 +503,10 @@ public class TrafficRouter {
 		final List<Cache> caches = selectCaches(cacheLocation, ds);
 
 		if (caches != null && track != null) {
-			track.setResult(ResultType.CZ);
+			track.setResult(result);
+			if (track.isFromBackupCzGroup()) {
+				track.setResultDetails(ResultDetails.DS_CZ_BACKUP_CG);
+			}
 			track.setResultLocation(cacheLocation.getGeolocation());
 		}
 
@@ -443,34 +516,36 @@ public class TrafficRouter {
 	public HTTPRouteResult multiRoute(final HTTPRequest request, final Track track) throws MalformedURLException, GeolocationException {
 		final DeliveryService entryDeliveryService = cacheRegister.getDeliveryService(request, true);
 
-		if (isTlsMismatch(request, entryDeliveryService)) {
-			track.setResult(ResultType.ERROR);
-			track.setResultDetails(ResultDetails.DS_TLS_MISMATCH);
+		final List<SteeringResult> steeringResults = getSteeringResults(request, track, entryDeliveryService);
+
+		if (steeringResults == null) {
 			return null;
 		}
 
 		final HTTPRouteResult routeResult = new HTTPRouteResult(true);
-		final List<DeliveryService> deliveryServices = getDeliveryServices(request, track, entryDeliveryService);
+		routeResult.setDeliveryService(entryDeliveryService);
 
-		if (deliveryServices == null) {
-			return null;
+		final List<SteeringResult> resultsToRemove = new ArrayList<>();
+
+		for (final SteeringResult steeringResult : steeringResults) {
+			final DeliveryService ds = steeringResult.getDeliveryService();
+
+			final List<Cache> caches = selectCaches(request, ds, track);
+
+			if (caches != null && !caches.isEmpty()) {
+				final Cache cache = consistentHasher.selectHashable(caches, ds.getDispersion(), request.getPath());
+				steeringResult.setCache(cache);
+			} else {
+				resultsToRemove.add(steeringResult);
+			}
 		}
 
-		for (final DeliveryService deliveryService : deliveryServices) {
-			if (deliveryService.isRegionalGeoEnabled()) {
-				LOGGER.error("Regional Geo Blocking is not supported with multi-route delivery services.. skipping " + entryDeliveryService.getId() + "/" + deliveryService.getId());
-				continue;
-			}
+		steeringResults.removeAll(resultsToRemove);
 
-			if (deliveryService.isAvailable()) {
-				final List<Cache> caches = selectCaches(request, deliveryService, track);
-				routeResult.addDeliveryService(deliveryService);
+		geoSortSteeringResults(steeringResults, request.getClientIP(), entryDeliveryService);
 
-				if (caches != null && !caches.isEmpty()) {
-					final Cache cache = consistentHasher.selectHashable(caches, deliveryService.getDispersion(), request.getPath());
-					routeResult.addUrl(new URL(deliveryService.createURIString(request, cache)));
-				}
-			}
+		for (final SteeringResult steeringResult: steeringResults) {
+			routeResult.addUrl(new URL(steeringResult.getDeliveryService().createURIString(request, steeringResult.getCache())));
 		}
 
 		if (routeResult.getUrls().isEmpty()) {
@@ -480,6 +555,7 @@ public class TrafficRouter {
 		return routeResult;
 	}
 
+	@SuppressWarnings({ "PMD.CyclomaticComplexity", "PMD.NPathComplexity" })
 	public HTTPRouteResult route(final HTTPRequest request, final Track track) throws MalformedURLException, GeolocationException {
 		track.setRouteType(RouteType.HTTP, request.getHostname());
 
@@ -490,6 +566,7 @@ public class TrafficRouter {
 		}
 	}
 
+	@SuppressWarnings({ "PMD.CyclomaticComplexity", "PMD.NPathComplexity" })
 	public HTTPRouteResult singleRoute(final HTTPRequest request, final Track track) throws MalformedURLException, GeolocationException {
 		final DeliveryService deliveryService = getDeliveryService(request, track);
 
@@ -522,6 +599,16 @@ public class TrafficRouter {
 
 		final Cache cache = consistentHasher.selectHashable(caches, deliveryService.getDispersion(), request.getPath());
 
+		// Enforce anonymous IP blocking if a DS has anonymous blocking enabled
+		// and the feature is enabled
+		if (deliveryService.isAnonymousIpEnabled() && AnonymousIp.getCurrentConfig().enabled) {
+			AnonymousIp.enforce(this, request, deliveryService, cache, routeResult, track);
+
+			if (routeResult.getResponseCode() == AnonymousIp.BLOCK_CODE) {
+				return routeResult;
+			}
+		}
+
 		if (deliveryService.isRegionalGeoEnabled()) {
 			RegionalGeo.enforce(this, request, deliveryService, cache, routeResult, track);
 			return routeResult;
@@ -533,24 +620,42 @@ public class TrafficRouter {
 		return routeResult;
 	}
 
-	private List<DeliveryService> getDeliveryServices(final HTTPRequest request, final Track track, final DeliveryService entryDeliveryService) {
-		final List<DeliveryService> deliveryServices = consistentHashMultiDeliveryService(entryDeliveryService, request.getPath());
+	@SuppressWarnings({"PMD.NPathComplexity"})
+	private List<SteeringResult> getSteeringResults(final HTTPRequest request, final Track track, final DeliveryService entryDeliveryService) {
 
-		if (deliveryServices == null || deliveryServices.isEmpty()) {
+		if (isTlsMismatch(request, entryDeliveryService)) {
+			track.setResult(ResultType.ERROR);
+			track.setResultDetails(ResultDetails.DS_TLS_MISMATCH);
+			return null;
+		}
+
+		final List<SteeringResult> steeringResults = consistentHashMultiDeliveryService(entryDeliveryService, request.getPath());
+
+		if (steeringResults == null || steeringResults.isEmpty()) {
 			track.setResult(ResultType.DS_MISS);
 			track.setResultDetails(ResultDetails.DS_NOT_FOUND);
 			return null;
 		}
 
-		for (final DeliveryService deliveryService : deliveryServices) {
-			if (isTlsMismatch(request, deliveryService)) {
+		final List<SteeringResult> toBeRemoved = new ArrayList<>();
+		for (final SteeringResult steeringResult : steeringResults) {
+			final DeliveryService ds = steeringResult.getDeliveryService();
+			if (isTlsMismatch(request, ds)) {
 				track.setResult(ResultType.ERROR);
 				track.setResultDetails(ResultDetails.DS_TLS_MISMATCH);
 				return null;
 			}
+			if (ds.isRegionalGeoEnabled()) {
+				LOGGER.error("Regional Geo Blocking is not supported with multi-route delivery services.. skipping " + entryDeliveryService.getId() + "/" + ds.getId());
+				toBeRemoved.add(steeringResult);
+			} else if (!ds.isAvailable()) {
+				toBeRemoved.add(steeringResult);
+			}
+
 		}
 
-		return deliveryServices;
+		steeringResults.removeAll(toBeRemoved);
+		return steeringResults.isEmpty() ? null : steeringResults;
 	}
 
 	private DeliveryService getDeliveryService(final HTTPRequest request, final Track track) {
@@ -584,6 +689,15 @@ public class TrafficRouter {
 		return false;
 	}
 
+	protected NetworkNode getDeepNetworkNode(final String ip) {
+		try {
+			return NetworkNode.getDeepInstance().getNetwork(ip);
+		} catch (NetworkNodeException e) {
+			LOGGER.warn(e);
+		}
+		return null;
+	}
+
 	protected NetworkNode getNetworkNode(final String ip) {
 		try {
 			return NetworkNode.getInstance().getNetwork(ip);
@@ -594,7 +708,13 @@ public class TrafficRouter {
 	}
 
 	public CacheLocation getCoverageZoneCacheLocation(final String ip, final String deliveryServiceId) {
-		final NetworkNode networkNode = getNetworkNode(ip);
+		return getCoverageZoneCacheLocation(ip, deliveryServiceId, false, null); // default is not deep
+	}
+
+	@SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
+	public CacheLocation getCoverageZoneCacheLocation(final String ip, final String deliveryServiceId, final boolean useDeep, final Track track) {
+		final NetworkNode networkNode = useDeep ? getDeepNetworkNode(ip) : getNetworkNode(ip);
+		final LocalizationMethod localizationMethod = useDeep ? LocalizationMethod.DEEP_CZ : LocalizationMethod.CZ;
 
 		if (networkNode == null) {
 			return null;
@@ -603,8 +723,22 @@ public class TrafficRouter {
 		final DeliveryService deliveryService = cacheRegister.getDeliveryService(deliveryServiceId);
 		CacheLocation cacheLocation = networkNode.getCacheLocation();
 
+		if (useDeep && cacheLocation != null) {
+			// lazily load deep Caches into the deep CacheLocation
+			cacheLocation.loadDeepCaches(networkNode.getDeepCacheNames(), cacheRegister);
+		}
+
+		if (cacheLocation != null && !cacheLocation.isEnabledFor(localizationMethod)) {
+			return null;
+		}
+
 		if (cacheLocation != null && !getSupportingCaches(cacheLocation.getCaches(), deliveryService).isEmpty()) {
 			return cacheLocation;
+		}
+
+		if (useDeep) {
+			// there were no available deep caches in the deep CZF
+			return null;
 		}
 
 		if (networkNode.getLoc() == null) {
@@ -613,14 +747,66 @@ public class TrafficRouter {
 
 		// find CacheLocation
 		cacheLocation = getCacheRegister().getCacheLocationById(networkNode.getLoc());
+		if (cacheLocation != null && !cacheLocation.isEnabledFor(localizationMethod)) {
+			track.continueGeo = false; // hit in the CZF but the cachegroup doesn't allow CZ-localization, don't fall back to GEO
+			return null;
+		}
+
 		if (cacheLocation != null && !getSupportingCaches(cacheLocation.getCaches(), deliveryService).isEmpty()) {
+			// lazy loading in case a CacheLocation has not yet been associated with this NetworkNode
 			networkNode.setCacheLocation(cacheLocation);
 			return cacheLocation;
 		}
 
+		if (cacheLocation != null && cacheLocation.getBackupCacheGroups() != null) {
+			for (final String cacheGroup : cacheLocation.getBackupCacheGroups()) {
+				final CacheLocation bkCacheLocation = getCacheRegister().getCacheLocationById(cacheGroup);
+				if (bkCacheLocation != null && !bkCacheLocation.isEnabledFor(localizationMethod)) {
+					continue;
+				}
+				if (bkCacheLocation != null && !getSupportingCaches(bkCacheLocation.getCaches(), deliveryService).isEmpty()) {
+					LOGGER.debug("Got backup CZ cache group " + bkCacheLocation.getId() + " for " + ip + ", ds " + deliveryServiceId);
+					if (track != null) {
+						track.setFromBackupCzGroup(true);
+					}
+					return bkCacheLocation;
+				}
+			}
+			// track.continueGeo
+			// will become to false only when backups are configured and (primary group's) fallbackToClosedGeo is configured (non-empty list) to false
+			// False signals subsequent cacheSelection routine to stop geo based selection.
+			if (!cacheLocation.isUseClosestGeoLoc()) {
+			    track.continueGeo = false;
+			    return null;
+			}
+		} 
+
 		// We had a hit in the CZF but the name does not match a known cache location.
 		// Check whether the CZF entry has a geolocation and use it if so.
-		return getClosestCacheLocation(cacheRegister.filterAvailableLocations(deliveryServiceId), networkNode.getGeolocation(), cacheRegister.getDeliveryService(deliveryServiceId));
+		List<CacheLocation> availableLocations = cacheRegister.filterAvailableLocations(deliveryServiceId);
+		availableLocations = filterEnabledLocations(availableLocations, localizationMethod);
+		final CacheLocation closestCacheLocation = getClosestCacheLocation(availableLocations, networkNode.getGeolocation(), cacheRegister.getDeliveryService(deliveryServiceId));
+		if (closestCacheLocation != null) {
+			LOGGER.debug("Got closest CZ cache group " + closestCacheLocation.getId() + " for " + ip + ", ds " + deliveryServiceId);
+			if (track != null) {
+				track.setFromBackupCzGroup(true);
+			}
+		}
+		return closestCacheLocation;
+	}
+
+	public List<CacheLocation> filterEnabledLocations(final Collection<CacheLocation> locations, final LocalizationMethod localizationMethod) {
+		return locations.stream()
+				.filter(loc -> loc.isEnabledFor(localizationMethod))
+				.collect(Collectors.toList());
+	}
+
+	public CacheLocation getDeepCoverageZoneCacheLocation(final String ip, final DeliveryService deliveryService) {
+		return getCoverageZoneCacheLocation(ip, deliveryService, true, null);
+	}
+
+	protected CacheLocation getCoverageZoneCacheLocation(final String ip, final DeliveryService deliveryService, final boolean useDeep, final Track track) {
+		return getCoverageZoneCacheLocation(ip, deliveryService.getId(), useDeep, track);
 	}
 
 	protected CacheLocation getCoverageZoneCacheLocation(final String ip, final DeliveryService deliveryService) {
@@ -628,13 +814,17 @@ public class TrafficRouter {
 	}
 
 	public Cache consistentHashForCoverageZone(final String ip, final String deliveryServiceId, final String requestPath) {
+		return consistentHashForCoverageZone(ip, deliveryServiceId, requestPath, false);
+	}
+
+	public Cache consistentHashForCoverageZone(final String ip, final String deliveryServiceId, final String requestPath, final boolean useDeep) {
 		final DeliveryService deliveryService = cacheRegister.getDeliveryService(deliveryServiceId);
 		if (deliveryService == null) {
 			LOGGER.error("Failed getting delivery service from cache register for id '" + deliveryServiceId + "'");
 			return null;
 		}
 
-		final CacheLocation coverageZoneCacheLocation = getCoverageZoneCacheLocation(ip, deliveryService);
+		final CacheLocation coverageZoneCacheLocation = getCoverageZoneCacheLocation(ip, deliveryService, useDeep, null);
 		final List<Cache> caches = selectCachesByCZ(deliveryService, coverageZoneCacheLocation);
 
 		if (caches == null || caches.isEmpty()) {
@@ -672,10 +862,6 @@ public class TrafficRouter {
 		return consistentHasher.selectHashable(caches, deliveryService.getDispersion(), requestPath);
 	}
 
-	public DeliveryService consistentHashDeliveryService(final String deliveryServiceId, final String requestPath) {
-		return consistentHashDeliveryService(cacheRegister.getDeliveryService(deliveryServiceId), requestPath, "");
-	}
-
 	private boolean isSteeringDeliveryService(final DeliveryService deliveryService) {
 		return deliveryService != null && steeringRegistry.has(deliveryService.getId());
 	}
@@ -690,16 +876,44 @@ public class TrafficRouter {
 		return steeringRegistry.get(deliveryService.getId()).isClientSteering();
 	}
 
-	public List<DeliveryService> consistentHashMultiDeliveryService(final DeliveryService deliveryService, final String requestPath) {
+	protected Geolocation getClientLocationByCoverageZoneOrGeo(final String clientIP, final DeliveryService deliveryService) {
+		Geolocation clientLocation;
+		final NetworkNode networkNode = getNetworkNode(clientIP);
+		if (networkNode != null && networkNode.getGeolocation() != null) {
+			clientLocation = networkNode.getGeolocation();
+		} else {
+			try {
+				clientLocation = getLocation(clientIP, deliveryService);
+			} catch (GeolocationException e) {
+				clientLocation = null;
+			}
+		}
+		return deliveryService.supportLocation(clientLocation);
+	}
+
+	protected void geoSortSteeringResults(final List<SteeringResult> steeringResults, final String clientIP, final DeliveryService deliveryService) {
+		if (clientIP == null || clientIP.isEmpty()
+				|| steeringResults.stream().allMatch(t -> t.getSteeringTarget().getGeolocation() == null)) {
+			return;
+		}
+
+		final Geolocation clientLocation = getClientLocationByCoverageZoneOrGeo(clientIP, deliveryService);
+		if (clientLocation != null) {
+			Collections.sort(steeringResults, new SteeringGeolocationComparator(clientLocation));
+			Collections.sort(steeringResults, Comparator.comparingInt(s -> s.getSteeringTarget().getOrder())); // re-sort by order to preserve the ordering done by ConsistentHasher
+		}
+	}
+
+	public List<SteeringResult> consistentHashMultiDeliveryService(final DeliveryService deliveryService, final String requestPath) {
 		if (deliveryService == null) {
 			return null;
 		}
 
-		final List<DeliveryService> deliveryServices = new ArrayList<DeliveryService>();
+		final List<SteeringResult> steeringResults = new ArrayList<>();
 
 		if (!isSteeringDeliveryService(deliveryService)) {
-			deliveryServices.add(deliveryService);
-			return deliveryServices;
+			steeringResults.add(new SteeringResult(null, deliveryService));
+			return steeringResults;
 		}
 
 		final Steering steering = steeringRegistry.get(deliveryService.getId());
@@ -708,12 +922,16 @@ public class TrafficRouter {
 		for (final SteeringTarget steeringTarget : steeringTargets) {
 			final DeliveryService target = cacheRegister.getDeliveryService(steeringTarget.getDeliveryService());
 
-			if (target != null) {
-				deliveryServices.add(target);
+			if (target != null) { // target might not be in CRConfig yet
+				steeringResults.add(new SteeringResult(steeringTarget, target));
 			}
 		}
 
-		return deliveryServices;
+		return steeringResults;
+	}
+
+	public DeliveryService consistentHashDeliveryService(final String deliveryServiceId, final String requestPath) {
+		return consistentHashDeliveryService(cacheRegister.getDeliveryService(deliveryServiceId), requestPath, "");
 	}
 
 	public DeliveryService consistentHashDeliveryService(final DeliveryService deliveryService, final String requestPath, final String xtcSteeringOption) {
@@ -733,10 +951,17 @@ public class TrafficRouter {
 
 		final String bypassDeliveryServiceId = steering.getBypassDestination(requestPath);
 		if (bypassDeliveryServiceId != null && !bypassDeliveryServiceId.isEmpty()) {
-			return cacheRegister.getDeliveryService(bypassDeliveryServiceId);
+			final DeliveryService bypass = cacheRegister.getDeliveryService(bypassDeliveryServiceId);
+			if (bypass != null) { // bypass DS target might not be in CRConfig yet. Until then, try existing targets
+				return bypass;
+			}
 		}
 
-		final SteeringTarget steeringTarget = consistentHasher.selectHashable(steering.getTargets(), deliveryService.getDispersion(), requestPath);
+		// only select from targets in CRConfig
+		final List<SteeringTarget> availableTargets = steering.getTargets().stream()
+				.filter(target -> cacheRegister.getDeliveryService(target.getDeliveryService()) != null)
+				.collect(Collectors.toList());
+		final SteeringTarget steeringTarget = consistentHasher.selectHashable(availableTargets, deliveryService.getDispersion(), requestPath);
 		return cacheRegister.getDeliveryService(steeringTarget.getDeliveryService());
 	}
 

@@ -44,7 +44,7 @@ __PACKAGE__->table("profile");
 
   data_type: 'timestamp with time zone'
   default_value: current_timestamp
-  is_nullable: 1
+  is_nullable: 0
   original: {default_value => \"now()"}
 
 =head2 type
@@ -58,6 +58,12 @@ __PACKAGE__->table("profile");
   data_type: 'bigint'
   is_foreign_key: 1
   is_nullable: 1
+
+=head2 routing_disabled
+
+  data_type: 'boolean'
+  default_value: false
+  is_nullable: 0
 
 =cut
 
@@ -77,7 +83,7 @@ __PACKAGE__->add_columns(
   {
     data_type     => "timestamp with time zone",
     default_value => \"current_timestamp",
-    is_nullable   => 1,
+    is_nullable   => 0,
     original      => { default_value => \"now()" },
   },
   "type",
@@ -106,6 +112,8 @@ __PACKAGE__->add_columns(
   },
   "cdn",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
+  "routing_disabled",
+  { data_type => "boolean", default_value => \"false", is_nullable => 0 },
 );
 
 =head1 PRIMARY KEY
@@ -122,7 +130,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_101371_name_unique>
+=head2 C<idx_140397_name_unique>
 
 =over 4
 
@@ -132,7 +140,7 @@ __PACKAGE__->set_primary_key("id");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_101371_name_unique", ["name"]);
+__PACKAGE__->add_unique_constraint("idx_140397_name_unique", ["name"]);
 
 =head1 RELATIONS
 
@@ -171,6 +179,21 @@ __PACKAGE__->has_many(
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
+=head2 origins
+
+Type: has_many
+
+Related object: L<Schema::Result::Origin>
+
+=cut
+
+__PACKAGE__->has_many(
+  "origins",
+  "Schema::Result::Origin",
+  { "foreign.profile" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
 =head2 profile_parameters
 
 Type: has_many
@@ -202,8 +225,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07046 @ 2017-01-02 16:07:07
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:1LR3Lov3kmopJD1mJF08EQ
+# Created by DBIx::Class::Schema::Loader v0.07042 @ 2018-05-15 16:06:00
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:eX4sXLElEMpaA0xfHTv5lw
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

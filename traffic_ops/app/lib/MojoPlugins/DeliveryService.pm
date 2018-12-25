@@ -55,12 +55,28 @@ sub register {
 			elsif ( $inp =~ /^(\d+)G$/ ) { return $1 * 1000; }
 			elsif ( $inp =~ /^(\d+)M$/ ) { return $1; }
 			elsif ( $inp =~ /^(\d+)k$/ ) { return int( $1 / 1000 ); }
-			elsif ( $inp =~ /^\d+$/ )    { return $1; }
+			elsif ( $inp =~ /^(\d+)$/  ) { return $1; }
 			else                         { return -1; }
 
 		}
 	);
 
+	$app->renderer->add_helper(
+		hr_string_to_bps => sub {
+			my $self = shift;
+			my $inp  = shift;
+
+			if    ( !defined($inp) )     { return 0; }                  # default is 0
+			elsif ( $inp =~ /^(\d+)T$/ ) { return $1 * 1000000000000; }
+			elsif ( $inp =~ /^(\d+)G$/ ) { return $1 * 1000000000; }
+			elsif ( $inp =~ /^(\d+)M$/ ) { return $1 * 1000000; }
+			elsif ( $inp =~ /^(\d+)k$/ ) { return $1 * 1000; }
+			elsif ( $inp =~ /^(\d+)$/  ) { return $1; }
+			else                         { return -1; }
+
+		}
+	);
+	
 	$app->renderer->add_helper(
 		is_delivery_service_assigned => sub {
 			my $self = shift || confess($no_instance_message);
@@ -173,41 +189,38 @@ sub register {
 
 	$app->renderer->add_helper(
 		find_existing_host_regex => sub {
-			my $self = shift || confess($no_instance_message);
-			my $regex_type = shift || confess("Please supply a regex type");
-			my $host_regex = shift || confess("Please supply a host regular expression");
-			my $cdn_domain = shift || confess("Please supply a cdn domain");
-			my $cdn_id = shift || confess("Please supply a cdn_name");
-			my $ds_id = shift;
+                        my $self = shift || confess($no_instance_message);
+                        my $regex_type = shift || confess("Please supply a regex type");
+                        my $host_regex = shift || confess("Please supply a host regular expression");
+                        my $cdn_domain = shift || confess("Please supply a cdn domain");
+                        my $cdn_id = shift || confess("Please supply a cdn_name");
+                        my $ds_id = shift;
 
-			if ($regex_type ne 'HOST_REGEXP') {
-				return undef;
-			}
+                        if ($regex_type ne 'HOST_REGEXP') {
+                                return undef;
+                        }
 
-			my $new_regex = $host_regex . $cdn_domain;
-			my $rs = $self->db->resultset('DeliveryserviceRegex')->search(undef, {prefetch => [{regex => undef}, {deliveryservice => undef}]} );
+                        my $new_regex = $host_regex . $cdn_domain;
+                        my %criteria;
+                        $criteria{'pattern'} = $host_regex;
+                        my $rs_regex = $self->db->resultset('Regex')->search( \%criteria );
+                        while ( my $row = $rs_regex->next ) {
+                                my $rs_ds_regex = $self->db->resultset('DeliveryserviceRegex')->search( {  regex => $row->id } );
+                                while (my $ds_regex_row = $rs_ds_regex->next) {
+                                        if (defined($ds_id) && $ds_id == $ds_regex_row->deliveryservice->id ) { # do not compare if it is the same delivery service
+                                                next;
+                                        }
+                                        my $other_cdn_id = $self->db->resultset('Deliveryservice')->search( { 'me.id' => $ds_regex_row->deliveryservice->id })->single->cdn_id;
 
-			while (my $row = $rs->next) {
-				my $other_cdn_id = $self->db->resultset('Deliveryservice')->search( { 'me.id' => $row->deliveryservice->id })->single->cdn_id;
-
-				if (defined($cdn_id) && $other_cdn_id != $cdn_id) {
-					next;
-				}
-
-				if (defined($ds_id) && $ds_id == $row->deliveryservice->id) {
-					next;
-				}
-
-				my $existing_regex = $row->regex->pattern . $cdn_domain;
-
-				if ($existing_regex eq $new_regex) {
-					return $existing_regex;
-				}
-			}
-
-			return undef;
-		}
-	);
+                                        if (defined($cdn_id) && $other_cdn_id ne $cdn_id) { # do not compare if not the same cdn.
+                                                next;
+                                        }
+                                        return $new_regex; # at this point we know they are the same and are conflicting.
+                                }
+                        }
+                        return undef;
+                }
+        );
 
 	$app->renderer->add_helper(
 		get_cdn_domain_by_ds_id => sub {

@@ -14,6 +14,8 @@
  -->
 
 <!-- Note: add a page here, mod the site.css as well! -->
+
+<div class="deprecatedBar">WARNING: This old interface is deprecated! It will be removed in Traffic Control 4.0! Please use Traffic Portal</div>
 	<ul id="jMenu">
 	  	<li><a id="nav-eh">Health</a>
 	  		<ul>
@@ -77,7 +79,7 @@
 	  <li><a id="nav-us"><div>Help</div></a>
 	  	<ul>
 	  		<li><a href="/help/about">About</a></li>
-	  		<li><a href="https://github.com/apache/incubator-trafficcontrol/milestones">Release Notes</a></li>
+	  		<li><a href="https://github.com/apache/trafficcontrol/milestones">Release Notes</a></li>
 	  		<li><a href="/logout" id="nav-lo">Logout</a></li>
 	  	</ul>
 	  </li>

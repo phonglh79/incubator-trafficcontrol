@@ -15,12 +15,14 @@
 
 package com.comcast.cdn.traffic_control.traffic_router.core.util;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -29,10 +31,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
-import org.apache.wicket.ajax.json.JSONException;
 
 import com.ning.http.client.AsyncCompletionHandler;
 import com.ning.http.client.AsyncHttpClient;
@@ -50,15 +52,13 @@ import static org.apache.commons.codec.digest.DigestUtils.md5Hex;
 public class PeriodicResourceUpdater {
 	private static final Logger LOGGER = Logger.getLogger(PeriodicResourceUpdater.class);
 
-	private static final AsyncHttpClient asyncHttpClient = new AsyncHttpClient(
-			new AsyncHttpClientConfig.Builder()
-				.setConnectionTimeoutInMs(10000)
-				.build());
-
+	private AsyncHttpClient asyncHttpClient;
 	protected String databaseLocation;
 	protected final ResourceUrl urls;
 	protected ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
 	protected long pollingInterval;
+
+	private static final String GZIP_ENCODING_STRING = "gzip";
 
 	protected ScheduledFuture<?> scheduledService;
 
@@ -101,6 +101,7 @@ public class PeriodicResourceUpdater {
 	final private boolean pauseTilLoaded;
 
 	public void init() {
+		asyncHttpClient = newAsyncClient();
 		putCurrent();
 		LOGGER.info("Starting schedule with interval: "+getPollingInterval() + " : "+TimeUnit.MILLISECONDS);
 		scheduledService = executorService.scheduleWithFixedDelay(updater, 0, getPollingInterval(), TimeUnit.MILLISECONDS);
@@ -115,6 +116,13 @@ public class PeriodicResourceUpdater {
 				}
 			}
 		}
+	}
+
+	private AsyncHttpClient newAsyncClient() {
+		return new AsyncHttpClient(
+				new AsyncHttpClientConfig.Builder()
+						.setConnectionTimeoutInMs(10000)
+							.build());
 	}
 
 	private synchronized void putCurrent() {
@@ -134,7 +142,10 @@ public class PeriodicResourceUpdater {
 			if (!hasBeenLoaded || needsUpdating(existingDB)) {
 				final Request request = getRequest(urls.nextUrl());
 				if (request != null) {
-					asyncHttpClient.executeRequest(request, new UpdateHandler(request)); // AsyncHandlers are NOT thread safe; one instance per request
+					request.getHeaders().add("Accept-Encoding", GZIP_ENCODING_STRING);
+					if ((asyncHttpClient!=null) && (!asyncHttpClient.isClosed())) {
+						asyncHttpClient.executeRequest(request, new UpdateHandler(request)); // AsyncHandlers are NOT thread safe; one instance per request
+					}
 					return true;
 				}
 			} else {
@@ -249,7 +260,7 @@ public class PeriodicResourceUpdater {
 		}
 
 		@Override
-		public Integer onCompleted(final Response response) throws JSONException, IOException {
+		public Integer onCompleted(final Response response) throws IOException {
 			// Do something with the Response
 			final int code = response.getStatusCode();
 
@@ -257,7 +268,21 @@ public class PeriodicResourceUpdater {
 				return code;
 			}
 
-			updateDatabase(response.getResponseBody());
+			final String responseBody;
+			if (GZIP_ENCODING_STRING.equals(response.getHeader("Content-Encoding"))) {
+				final StringBuilder stringBuilder = new StringBuilder();
+				final GZIPInputStream zippedInputStream =  new GZIPInputStream(response.getResponseBodyAsStream());
+				final BufferedReader r = new BufferedReader(new InputStreamReader(zippedInputStream));
+				String line;
+				while((line = r.readLine()) != null) {
+					stringBuilder.append(line);
+				}
+				responseBody = stringBuilder.toString();
+			} else {
+				responseBody = response.getResponseBody();
+			}
+
+			updateDatabase(responseBody);
 
 			return code;
 		}

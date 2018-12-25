@@ -24,7 +24,7 @@ services:
       dockerfile: infrastructure/docker/build/Dockerfile-source
       context: ../../..
     volumes:
-      - ../../..:/trafficcontrol
+      - ../../..:/trafficcontrol:z
 
   traffic_monitor_build:
     image: traffic_monitor_builder
@@ -32,18 +32,7 @@ services:
       dockerfile: infrastructure/docker/build/Dockerfile-traffic_monitor
       context: ../../..
     volumes:
-      - ../../..:/trafficcontrol
-
-  # NOTE: Disabled since rpm name collides with current traffic_monitor.  To
-  # build golang version,  uncomment this section and use `docker-compose ...
-  # up traffic_monitor_golang_build`
-  # traffic_monitor_golang_build:
-  #   image: traffic_monitor_golang_builder
-  #   build:
-  #     dockerfile: infrastructure/docker/build/Dockerfile-traffic_monitor_golang
-  #     context: ../../..
-  #   volumes:
-  #     - ../../..:/trafficcontrol
+      - ../../..:/trafficcontrol:z
 
   traffic_ops_build:
     image: traffic_ops_builder
@@ -51,7 +40,7 @@ services:
       dockerfile: infrastructure/docker/build/Dockerfile-traffic_ops
       context: ../../..
     volumes:
-      - ../../..:/trafficcontrol
+      - ../../..:/trafficcontrol:z
 
   traffic_portal_build:
     image: traffic_portal_builder
@@ -59,7 +48,7 @@ services:
       dockerfile: infrastructure/docker/build/Dockerfile-traffic_portal
       context: ../../..
     volumes:
-      - ../../..:/trafficcontrol
+      - ../../..:/trafficcontrol:z
 
   traffic_router_build:
     image: traffic_router_builder
@@ -67,7 +56,8 @@ services:
       dockerfile: infrastructure/docker/build/Dockerfile-traffic_router
       context: ../../..
     volumes:
-      - ../../..:/trafficcontrol
+      - ../../..:/trafficcontrol:z
+      - ../../../.m2:/root/.m2:z
 
   traffic_stats_build:
     image: traffic_stats_builder
@@ -75,4 +65,34 @@ services:
       dockerfile: infrastructure/docker/build/Dockerfile-traffic_stats
       context: ../../..
     volumes:
-      - ../../..:/trafficcontrol
+      - ../../..:/trafficcontrol:z
+
+  grove_build:
+    image: grove_builder
+    build:
+      dockerfile: infrastructure/docker/build/Dockerfile-grove
+      context: ../../..
+    volumes:
+      - ../../..:/trafficcontrol:z
+
+  grovetccfg_build:
+    image: grovetccfg_builder
+    build:
+      dockerfile: infrastructure/docker/build/Dockerfile-grovetccfg
+      context: ../../..
+    volumes:
+      - ../../..:/trafficcontrol:z
+
+  weasel:
+    image: licenseweasel/weasel:0.2
+    volumes:
+      - ../../..:/trafficcontrol:z
+    command: ['-f', '/trafficcontrol/dist/weasel.txt', '/trafficcontrol']
+
+  docs:
+    image: docs_builder
+    build:
+      dockerfile: infrastructure/docker/build/Dockerfile-docs
+      context: ../../..
+    volumes:
+      - ../../..:/trafficcontrol:z

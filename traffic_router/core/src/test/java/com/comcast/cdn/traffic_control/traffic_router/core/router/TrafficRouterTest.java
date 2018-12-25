@@ -17,6 +17,7 @@ package com.comcast.cdn.traffic_control.traffic_router.core.router;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.Cache;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheLocation;
+import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheLocation.LocalizationMethod;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheRegister;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.InetRecord;
 import com.comcast.cdn.traffic_control.traffic_router.core.config.CertificateChecker;
@@ -105,6 +106,8 @@ public class TrafficRouterTest {
 
         Track track = spy(StatTracker.getTrack());
 
+        when(deliveryService.getRoutingName()).thenReturn("edge");
+
         DNSRouteResult result = trafficRouter.route(request, track);
 
         assertThat(result.getAddresses(), containsInAnyOrder(new InetRecord("cname1", 12345)));
@@ -136,7 +139,7 @@ public class TrafficRouterTest {
 
         List<Cache> caches = new ArrayList<Cache>();
         caches.add(cache);
-        when(trafficRouter.selectCaches(any(Request.class), any(DeliveryService.class), any(Track.class))).thenReturn(caches);
+        when(trafficRouter.selectCaches(any(HTTPRequest.class), any(DeliveryService.class), any(Track.class))).thenReturn(caches);
         when(trafficRouter.selectCachesByGeo(anyString(), any(DeliveryService.class), any(CacheLocation.class), any(Track.class))).thenCallRealMethod();
         when(trafficRouter.getClientLocation(anyString(), any(DeliveryService.class), any(CacheLocation.class), any(Track.class))).thenReturn(new Geolocation(40, -100));
         when(trafficRouter.getCachesByGeo(any(DeliveryService.class), any(Geolocation.class), any(Track.class))).thenCallRealMethod();
@@ -166,13 +169,14 @@ public class TrafficRouterTest {
         when(deliveryService.isLocationAvailable(cacheLocation)).thenReturn(true);
         when(deliveryService.filterAvailableLocations(any(Collection.class))).thenCallRealMethod();
 
-        when(trafficRouter.selectCaches(any(Request.class), any(DeliveryService.class), any(Track.class))).thenCallRealMethod();
+        when(trafficRouter.selectCaches(any(HTTPRequest.class), any(DeliveryService.class), any(Track.class))).thenCallRealMethod();
         when(trafficRouter.selectCachesByGeo(anyString(), any(DeliveryService.class), any(CacheLocation.class), any(Track.class))).thenCallRealMethod();
 
         Geolocation clientLocation = new Geolocation(40, -100);
         when(trafficRouter.getClientLocation(anyString(), any(DeliveryService.class), any(CacheLocation.class), any(Track.class))).thenReturn(clientLocation);
 
         when(trafficRouter.getCachesByGeo(any(DeliveryService.class), any(Geolocation.class), any(Track.class))).thenCallRealMethod();
+        when(trafficRouter.filterEnabledLocations(any(List.class), any(LocalizationMethod.class))).thenCallRealMethod();
         when(trafficRouter.orderCacheLocations(any(List.class), any(Geolocation.class))).thenCallRealMethod();
         when(trafficRouter.getSupportingCaches(any(List.class), any(DeliveryService.class))).thenCallRealMethod();
 
@@ -189,10 +193,12 @@ public class TrafficRouterTest {
         assertThat(track.getResultLocation(), equalTo(new Geolocation(50, 50)));
 
         when(federationRegistry.findInetRecords(anyString(), any(CidrAddress.class))).thenReturn(null);
+        when(deliveryService.getRoutingName()).thenReturn("ccr");
 
         DNSRequest dnsRequest = new DNSRequest();
         dnsRequest.setClientIP("192.168.1.2");
         dnsRequest.setClientIP("10.10.10.10");
+        dnsRequest.setHostname("ccr.example.com");
         dnsRequest.setQtype(Type.A);
 
         track = StatTracker.getTrack();

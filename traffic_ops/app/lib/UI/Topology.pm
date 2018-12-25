@@ -90,20 +90,19 @@ sub gen_crconfig_json {
         "^EDGE" => "EDGE",
         "^MID"  => "MID",
     };
-
+    my $found;
     for my $cachetype ( keys %{$types} ) {
-        my $found = 0;
-
+        
         for my $this_type ( keys %{$profile_cache} ) {
             if ( $this_type =~ m/$cachetype/ && scalar( @{ $profile_cache->{$this_type} } ) > 0 ) {
                 push @profile_caches, @{ $profile_cache->{$this_type} };
                 $found = 1;
             }
         }
+    }
 
-        if ( !$found ) {
-            my $e = Mojo::Exception->throw( "No " . $types->{$cachetype} . " profiles found for CDN: " . $cdn_name );
-        }
+    if ( !$found ) {
+        my $e = Mojo::Exception->throw( "No cache profiles found for CDN: " . $cdn_name );
     }
 
     my %condition = (
@@ -154,6 +153,19 @@ sub gen_crconfig_json {
             }
             $data_obj->{'config'}->{'requestHeaders'} = $headers;
         }
+        elsif ( $param eq 'maxmind.default.override' ) {
+            ( my $country_code, my $coordinates ) = split( /\;/, $row->parameter->value );
+            ( my $lat, my $long ) = split( /\,/, $coordinates );
+            my $geolocation = {
+                'countryCode' => "$country_code",
+                'lat' => $lat + 0,
+                'long' => $long + 0
+            };
+            if ( !$data_obj->{'config'}->{'maxmindDefaultOverride'} ) {
+                @{ $data_obj->{'config'}->{'maxmindDefaultOverride'} } = ();
+            }
+            push ( @{ $data_obj->{'config'}->{'maxmindDefaultOverride'} }, $geolocation );
+        }
         elsif ( !exists $requested_param_names{$param} ) {
             $data_obj->{'config'}->{$param} = $row->parameter->value;
         }
@@ -189,8 +201,8 @@ sub gen_crconfig_json {
             'type.name' => [ { -like => 'EDGE%' }, { -like => 'MID%' }, { -like => 'CCR' }, { -like => 'RASCAL' }, { -like => 'TR' }, { -like => 'TM' } ],
             'me.cdn_id' => $cdn_id
         }, {
-            prefetch => [ 'type',      'status',      'cachegroup', 'profile' ],
-            columns  => [ 'host_name', 'domain_name', 'tcp_port', 'https_port',   'interface_name', 'ip_address', 'ip6_address', 'id', 'xmpp_id' ]
+            prefetch => [ 'type',      'status',      { 'cachegroup' => 'coordinate' }, 'profile' ],
+            columns  => [ 'host_name', 'domain_name', 'tcp_port', 'https_port',   'interface_name', 'ip_address', 'ip6_address', 'id', 'xmpp_id', 'profile.routing_disabled' ]
         }
     );
 
@@ -236,8 +248,17 @@ sub gen_crconfig_json {
         elsif ( $row->type->name =~ m/^EDGE/ || $row->type->name =~ m/^MID/ ) {
 
             if ( $row->type->name =~ m/^EDGE/ ) {
-                $data_obj->{'edgeLocations'}->{ $row->cachegroup->name }->{'latitude'}  = $row->cachegroup->latitude + 0;
-                $data_obj->{'edgeLocations'}->{ $row->cachegroup->name }->{'longitude'} = $row->cachegroup->longitude + 0;
+                $data_obj->{'edgeLocations'}->{ $row->cachegroup->name }->{'latitude'}  = $row->cachegroup->coordinate->latitude + 0;
+                $data_obj->{'edgeLocations'}->{ $row->cachegroup->name }->{'longitude'} = $row->cachegroup->coordinate->longitude + 0;
+                $data_obj->{'edgeLocations'}->{ $row->cachegroup->name }->{'backupLocations'}->{'fallbackToClosest'} = $row->cachegroup->fallback_to_closest ? "true" : "false";
+
+                my $rs_backups = $self->db->resultset('CachegroupFallback')->search({ primary_cg => $row->cachegroup->id}, {order_by => 'set_order'});
+                my $backup_cnt = 0;
+
+                while ( my $backup_row = $rs_backups->next ) {
+                    $data_obj->{'edgeLocations'}->{ $row->cachegroup->name }->{'backupLocations'}->{'list'}[$backup_cnt] = $backup_row->backup_cg->name; 
+                    $backup_cnt++;
+                }
             }
 
             if ( !exists $cache_tracker{ $row->id } ) {
@@ -265,15 +286,17 @@ sub gen_crconfig_json {
             $data_obj->{'contentServers'}->{ $row->host_name }->{'ip6'}           = ( $row->ip6_address || "" );
             $data_obj->{'contentServers'}->{ $row->host_name }->{'profile'}       = $row->profile->name;
             $data_obj->{'contentServers'}->{ $row->host_name }->{'type'}          = $row->type->name;
-            $data_obj->{'contentServers'}->{ $row->host_name }->{'hashId'}        = $row->xmpp_id;
+            $data_obj->{'contentServers'}->{ $row->host_name }->{'hashId'}        = $row->xmpp_id ? $row->xmpp_id : $row->host_name;
             $data_obj->{'contentServers'}->{ $row->host_name }->{'hashCount'}     = int( $weight * $weight_multiplier );
+            $data_obj->{'contentServers'}->{ $row->host_name }->{'routingDisabled'} = $row->profile->routing_disabled;
         }
     }
     my $regexps;
     my $rs_ds = $self->db->resultset('Deliveryservice')->search(
         {
 			'me.cdn_id' => $cdn_id,
-            'active'     => 1
+            'active'     => 1,
+            'type.name' => { '!=', [ 'ANY_MAP' ] }
         },
         { prefetch => [ 'deliveryservice_servers', 'deliveryservice_regexes', 'type' ] }
     );
@@ -286,6 +309,8 @@ sub gen_crconfig_json {
         else {
             $protocol = 'HTTP';
         }
+
+        $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'routingName'} = $row->routing_name;
 
         my @server_subrows = $row->deliveryservice_servers->all;
         my @regex_subrows  = $row->deliveryservice_regexes->all;
@@ -350,6 +375,7 @@ sub gen_crconfig_json {
             foreach my $server ( keys %server_subrow_dedup ) {
 
                 next if ( !defined( $cache_tracker{$server} ) );
+                next if ( $data_obj->{'contentServers'}->{ $cache_tracker{$server} }->{'routingDisabled'} == 1);
 
                 foreach my $host ( @{ $ds_to_remap{ $row->xml_id } } ) {
                     my $remap;
@@ -357,7 +383,7 @@ sub gen_crconfig_json {
                         my $host_copy = $host;
                         $host_copy =~ s/$host_regex1//g;
                         if ( $protocol eq 'DNS' ) {
-                            $remap = 'edge' . $host_copy . $ccr_domain_name;
+                            $remap = $row->routing_name . $host_copy . $ccr_domain_name;
                         }
                         else {
                             $remap = $cache_tracker{$server} . $host_copy . $ccr_domain_name;
@@ -394,6 +420,8 @@ sub gen_crconfig_json {
             }
             $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'geoEnabled'} = $geoEnabled;
         }
+
+        $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'deepCachingType'} = $row->deep_caching_type;
 
         # Default to 'http only'
         $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'sslEnabled'} = 'false';
@@ -460,20 +488,21 @@ sub gen_crconfig_json {
                 && $row->http_bypass_fqdn ne "" )
             {
                 my $full = $row->http_bypass_fqdn;
-                my $port;
                 my $fqdn;
                 if ( $full =~ m/\:/ ) {
+                    my $port;
                     ( $fqdn, $port ) = split( /\:/, $full );
+                    # Specify port number only if explicitly set by the DS 'Bypass FQDN' field - issue 1493
+                    $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'bypassDestination'}->{'HTTP'}->{'port'} = $port;
                 }
                 else {
                     $fqdn = $full;
-                    $port = '80';
                 }
                 $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'bypassDestination'}->{'HTTP'}->{'fqdn'} = $fqdn;
-                $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'bypassDestination'}->{'HTTP'}->{'port'} = $port;
             }
 
             $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'regionalGeoBlocking'} = $row->regional_geo_blocking ? 'true' : 'false';
+            $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'anonymousBlockingEnabled'} = $row->anonymous_blocking_enabled ? 'true' : 'false';
 
             if ( defined($row->geo_limit) && $row->geo_limit ne 0 ) {
                 $data_obj->{'deliveryServices'}->{ $row->xml_id }->{'geoLimitRedirectURL'} =
@@ -662,11 +691,21 @@ sub crconfig_strings {
             foreach my $key ( sort keys %{ $config_json->{'config'}->{$cfg} } ) {
                 $string .= "|$key:" . $config_json->{'config'}->{$cfg}->{$key};
             }
+            push( @config_strings, $string );
+        }
+        elsif ( $cfg eq 'maxmindDefaultOverride' ) {
+            foreach my $element ( @{ $config_json->{'config'}->{$cfg} } ) {
+                $string = "|param:$cfg";
+                foreach my $key ( sort keys %{ $element } ) {
+                    $string .= "|$key:" . $element->{$key};
+                }
+                push( @config_strings, $string );
+            }
         }
         else {
             $string = "|param:$cfg|value:" . $config_json->{'config'}->{$cfg} . "|";
+            push( @config_strings, $string );
         }
-        push( @config_strings, $string );
     }
     foreach my $rascal ( sort keys %{ $config_json->{'monitors'} } ) {
         my $return = &stringify_rascal( $config_json->{'monitors'}->{$rascal} );
@@ -701,6 +740,9 @@ sub stringify_ds {
     if ( defined( $ds->{'missLocation'} ) ) {
         $string .= "|GeoMiss: " . $ds->{'missLocation'}->{'lat'} . "," . $ds->{'missLocation'}->{'long'};
     }
+    if (defined( $ds->{'deepCachingType'} ) ) {
+        $string .= "|deepCachingType: " . $ds->{'deepCachingType'};
+    }
     if ( defined( $ds->{'bypassDestination'} ) ) {
         $string .= "<br>|BypassDest:";
         if ( defined( $ds->{'bypassDestination'}->{'DNS'}->{'ip'} ) ) {
@@ -722,6 +764,9 @@ sub stringify_ds {
     if ( defined( $ds->{'ip6RoutingEnabled'} ) ) {
         $string .= "|ip6RoutingEnabled: " . $ds->{'ip6RoutingEnabled'};
     }
+    if ( defined( $ds->{'routingName'} ) ) {
+        $string .= "|routingName: " . $ds->{'routingName'};
+    }
     if ( defined( $ds->{'maxDnsIpsForLocation'} ) ) {
         $string .= "|maxDnsIpsForLocation:" . $ds->{'maxDnsIpsForLocation'};
     }
@@ -738,6 +783,9 @@ sub stringify_ds {
     }
     if ( defined( $ds->{'regionalGeoBlocking'} ) ) {
         $string .= "|Regional_Geoblocking:" . $ds->{'regionalGeoBlocking'};
+    }
+    if ( defined( $ds->{'anonymousBlockingEnabled'} ) ) {
+        $string .= "|Anonymous_Blocking:" . $ds->{'anonymousBlockingEnabled'};
     }
     if ( defined( $ds->{'geoLimitRedirectURL'}) ) {
 		$string .= "|Geolimit_Redirect_URL:" . $ds->{'geoLimitRedirectURL'};
@@ -809,6 +857,7 @@ sub stringify_cs_ds {
     foreach my $ds ( sort keys %{$csds} ) {
         if ( ref( $csds->{$ds} ) eq 'ARRAY' ) {
             foreach my $map ( @{ $csds->{$ds} } ) {
+                next if !defined $map;
                 push( @strings, "|ds:" . $ds . "|server:" . $server . "|mapped:" . $map . "|" );
             }
         }

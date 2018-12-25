@@ -1,175 +1,195 @@
 /*
-
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
- http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
-
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
-var ChartHttpStatusController = function(entity, $window, $rootScope, $scope, $uibModal, $q, $timeout, $filter, propertiesModel, dateUtils, statsService) {
+var ChartHttpStatusController = function(deliveryService, $scope, $state, $timeout, $filter, $q, $interval, deliveryServiceService, deliveryServiceStatsService, dateUtils, locationUtils, numberUtils, propertiesModel) {
 
-    $scope.chartName = propertiesModel.properties.charts.httpStatus.name;
+	var chartSeries,
+		chartOptions;
 
-    var chartDatesChanged = false,
-        chartStart,
-        chartEnd;
+	var chartInterval,
+		autoRefresh = propertiesModel.properties.deliveryServices.charts.autoRefresh;
 
-    var loadAggregateHttpStatusData = function(start, end) {
-        if (!entity || !chartDatesChanged) return;
-        chartDatesChanged = false;
-        getAggregateHttpStatusData(start, end);
-    };
+	var status2xxChartData = [],
+		status3xxChartData = [],
+		status4xxChartData = [],
+		status5xxChartData = [];
 
-    var getAggregateHttpStatusData = function(start, end) {
+	var refreshHttpStatus = function() {
+		registerResizeListener();
+		getChartData($scope.deliveryService.xmlId, moment().subtract(1, 'days'), moment().subtract(10, 'seconds'));
+	};
 
-        var exclude = 'summary',
-            ignoreLoadingBar = false,
-            showError = false,
-            promises = [];
+	var getChartData = function(xmlId, start, end) {
+		var promises = [];
 
-        promises.push(statsService.getEdgeTransactionsByStatusGroup(entity, '2xx', start, end, $scope.httpStatusChartInterval, exclude, ignoreLoadingBar, showError));
-        promises.push(statsService.getEdgeTransactionsByStatusGroup(entity, '3xx', start, end, $scope.httpStatusChartInterval, exclude, ignoreLoadingBar, showError));
-        promises.push(statsService.getEdgeTransactionsByStatusGroup(entity, '4xx', start, end, $scope.httpStatusChartInterval, exclude, ignoreLoadingBar, showError));
-        promises.push(statsService.getEdgeTransactionsByStatusGroup(entity, '5xx', start, end, $scope.httpStatusChartInterval, exclude, ignoreLoadingBar, showError));
+		promises.push(deliveryServiceStatsService.getHttpStatusByGroup(xmlId, '2xx', start, end));
+		promises.push(deliveryServiceStatsService.getHttpStatusByGroup(xmlId, '3xx', start, end));
+		promises.push(deliveryServiceStatsService.getHttpStatusByGroup(xmlId, '4xx', start, end));
+		promises.push(deliveryServiceStatsService.getHttpStatusByGroup(xmlId, '5xx', start, end));
 
-        $q.all(promises)
-            .then(
-            function(responses) {
-                var status2xxChartData = buildHttpStatusChartData(responses[0], start, false),
-                    status3xxChartData = buildHttpStatusChartData(responses[1], start, false),
-                    status4xxChartData = buildHttpStatusChartData(responses[2], start, false),
-                    status5xxChartData = buildHttpStatusChartData(responses[3], start, false);
-                $timeout(function () {
-                    buildHttpChart(status2xxChartData, status3xxChartData, status4xxChartData, status5xxChartData);
-                }, 100);
-            },
-            function(fault) {
-                buildHttpChart([], [], [], []);
-            }).finally(function() {
-                $scope.httpStatusDataLoaded = true;
-            });
-    };
+		$q.all(promises)
+			.then(
+				function(responses) {
+					// set date range text
+					$scope.dateRangeText = dateUtils.dateFormat(start.toDate(), "UTC: ddd mmm d yyyy H:MM:ss tt (Z)") + ' to ' + dateUtils.dateFormat(end.toDate(), "UTC: ddd mmm d yyyy H:MM:ss tt (Z)");
 
-    var updateChartDates = function(start, end) {
-        $scope.dateRangeText = dateUtils.dateFormat(start.toDate(), "ddd mmm d yyyy h:MM tt (Z)") + ' to ' + dateUtils.dateFormat(end.toDate(), "ddd mmm d yyyy h:MM tt (Z)");
-    };
+					// set chart data
+					status2xxChartData = (responses[0].series) ? buildHttpStatusChartData(responses[0], start) : status2xxChartData;
+					status3xxChartData = (responses[1].series) ? buildHttpStatusChartData(responses[1], start) : status3xxChartData;
+					status4xxChartData = (responses[2].series) ? buildHttpStatusChartData(responses[2], start) : status4xxChartData;
+					status5xxChartData = (responses[3].series) ? buildHttpStatusChartData(responses[3], start) : status5xxChartData;
 
-    var buildHttpStatusChartData = function(result, start, incremental) {
-        var normalizedChartData = [],
-            series = result.series;
+					// set summary data
+					$scope.summaryData2xx = responses[0].summary;
+					$scope.summaryData3xx = responses[1].summary;
+					$scope.summaryData4xx = responses[2].summary;
+					$scope.summaryData5xx = responses[3].summary;
 
-        if (angular.isDefined(series)) {
-            _.each(series.values, function(seriesItem) {
-                if (moment(seriesItem[0]).isSame(start) || moment(seriesItem[0]).isAfter(start)) {
-                    if (_.isNumber(seriesItem[1]) || !incremental) {
-                        normalizedChartData.push([ moment(seriesItem[0]).valueOf(), seriesItem[1] ]);
-                    }
-                }
-            });
-        }
+					$timeout(function () {
+						buildChart(status2xxChartData, status3xxChartData, status4xxChartData, status5xxChartData);
+					}, 100);
+				},
+				function(fault) {
+					buildChart([], [], [], []);
+				});
+	};
 
-        return normalizedChartData;
-    };
 
-    var buildHttpChart = function(status2xxChartData, status3xxChartData, status4xxChartData, status5xxChartData) {
+	var buildHttpStatusChartData = function(result, start) {
+		var normalizedChartData = [],
+			series = result.series;
 
-        var options = {
-            xaxis: {
-                mode: "time",
-                timezone: "browser",
-                twelveHourClock: true
-            },
-            yaxes: [
-                {
-                    position: "left",
-                    axisLabel: "Success (2xx and 3xx)",
-                    axisLabelUseCanvas: true,
-                    axisLabelFontSizePixels: 12,
-                    axisLabelFontFamily: 'Verdana, Arial',
-                    axisLabelPadding: 3
-                },
-                {
-                    position: "right",
-                    axisLabel: "Client Error (4xx)",
-                    axisLabelUseCanvas: true,
-                    axisLabelFontSizePixels: 12,
-                    axisLabelFontFamily: 'Verdana, Arial',
-                    axisLabelPadding: 3
-                },
-                {
-                    position: "right",
-                    axisLabel: "Server Error (5xx)",
-                    axisLabelUseCanvas: true,
-                    axisLabelFontSizePixels: 12,
-                    axisLabelFontFamily: 'Verdana, Arial',
-                    axisLabelPadding: 3
-                }
-            ],
-            grid: {
-                hoverable: true,
-                axisMargin: 20
-            },
-            tooltip: {
-                show: true,
-                content: function(label, xval, yval, flotItem){
-                    var tooltipString = dateUtils.dateFormat(xval, "ddd mmm d yyyy h:MM:ss tt (Z)") + '<br>';
-                    tooltipString += '<span>' + label + ': ' + $filter('number')(yval, 2) + ' TPS</span><br>'
-                    return tooltipString;
-                }
-            }
-        };
+		if (angular.isDefined(series)) {
+			_.each(series.values, function(seriesItem) {
+				if (moment(seriesItem[0]).isSame(start) || moment(seriesItem[0]).isAfter(start)) {
+					if (_.isNumber(seriesItem[1])) {
+						normalizedChartData.push([ moment(seriesItem[0]).valueOf(), seriesItem[1] ]);
+					}
+				}
+			});
+		}
 
-        var series = [
-            { label: "2xx", yaxis: 1, color: "#91ca32", data: status2xxChartData },
-            { label: "3xx", yaxis: 1, color: "#5897fb", data: status3xxChartData },
-            { label: "4xx", yaxis: 2, color: "#6859a3", data: status4xxChartData },
-            { label: "5xx", yaxis: 3, color: "#a94442", data: status5xxChartData }
-        ];
+		return normalizedChartData;
+	};
 
-        $.plot($("#http-chart"), series, options);
+	var buildChart = function(status2xxChartData, status3xxChartData, status4xxChartData, status5xxChartData) {
 
-    };
+		chartOptions = {
+			xaxis: {
+				mode: "time",
+				timezone: "browser",
+				twelveHourClock: true
+			},
+			yaxes: [
+				{
+					position: "left",
+					axisLabel: "Success (2xx and 3xx)",
+					axisLabelUseCanvas: true,
+					axisLabelFontSizePixels: 12,
+					axisLabelFontFamily: 'Verdana, Arial',
+					axisLabelPadding: 3
+				},
+				{
+					position: "right",
+					axisLabel: "Client Error (4xx)",
+					axisLabelUseCanvas: true,
+					axisLabelFontSizePixels: 12,
+					axisLabelFontFamily: 'Verdana, Arial',
+					axisLabelPadding: 3
+				},
+				{
+					position: "right",
+					axisLabel: "Server Error (5xx)",
+					axisLabelUseCanvas: true,
+					axisLabelFontSizePixels: 12,
+					axisLabelFontFamily: 'Verdana, Arial',
+					axisLabelPadding: 3
+				}
+			],
+			grid: {
+				hoverable: true,
+				axisMargin: 20
+			},
+			tooltip: {
+				show: true,
+				content: function(label, xval, yval, flotItem){
+					var tooltipString = dateUtils.dateFormat(xval, "UTC: ddd mmm d yyyy H:MM:ss tt (Z)") + '<br>';
+					tooltipString += '<span>' + label + ': ' + $filter('number')(yval, 0) + '</span><br>'
+					return tooltipString;
+				}
+			}
+		};
 
-    var onDateChange = function(args) {
-        chartDatesChanged = true;
-        chartStart = args.start;
-        chartEnd = args.end;
-        updateChartDates(chartStart, chartEnd);
-        loadAggregateHttpStatusData(chartStart, chartEnd);
-    };
+		chartSeries = [
+			{ label: "2xx", yaxis: 1, color: "#91ca32", data: status2xxChartData },
+			{ label: "3xx", yaxis: 1, color: "#5897fb", data: status3xxChartData },
+			{ label: "4xx", yaxis: 2, color: "#6859a3", data: status4xxChartData },
+			{ label: "5xx", yaxis: 3, color: "#a94442", data: status5xxChartData }
+		];
 
-    $scope.httpStatusDataLoaded = false;
+		plotChart();
 
-    $scope.httpStatusChartInterval = '60s';
+	};
 
-    $scope.resetStatusCodes = function() {
-        $timeout(function(){
-            $scope.http2xxCodes = [];
-            $scope.http3xxCodes = [];
-            $scope.http4xxCodes = [];
-            $scope.http5xxCodes = [];
-        });
-    };
-    $scope.resetStatusCodes();
+	var createIntervals = function() {
+		killIntervals();
+		chartInterval = $interval(function() { refreshHttpStatus() }, propertiesModel.properties.deliveryServices.charts.refreshRateInMS );
+	};
 
-    $scope.$on('chartModel::dateChange', function(event, args) {
-        onDateChange(args);
-    });
+	var killIntervals = function() {
+		if (angular.isDefined(chartInterval)) {
+			$interval.cancel(chartInterval);
+			chartInterval = undefined;
+		}
+	};
 
-    $scope.$on('chartModel::dateRoll', function(event, args) {
-        onDateChange(args);
-    });
+	var registerResizeListener = function() {
+		$(window).resize(plotChart);
+	};
+
+	var plotChart = function() {
+		if (chartOptions && chartSeries) {
+			$.plot($("#ds-httpStatus-chart-" + $scope.deliveryService.id), chartSeries, chartOptions);
+		}
+	};
+
+	$scope.deliveryService = deliveryService;
+
+	$scope.summaryData2xx = {};
+	$scope.summaryData3xx = {};
+	$scope.summaryData4xx = {};
+	$scope.summaryData5xx = {};
+
+	$scope.dateRangeText;
+
+	$scope.$on("$destroy", function() {
+		killIntervals();
+	});
+
+	angular.element(document).ready(function () {
+		refreshHttpStatus();
+		if (autoRefresh) {
+			createIntervals();
+		}
+	});
 
 };
 
-ChartHttpStatusController.$inject = ['entity', '$window', '$rootScope', '$scope', '$uibModal', '$q', '$timeout', '$filter', 'propertiesModel', 'dateUtils', 'statsService'];
+ChartHttpStatusController.$inject = ['deliveryService', '$scope', '$state', '$timeout', '$filter', '$q', '$interval', 'deliveryServiceService', 'deliveryServiceStatsService', 'dateUtils', 'locationUtils', 'numberUtils', 'propertiesModel'];
 module.exports = ChartHttpStatusController;

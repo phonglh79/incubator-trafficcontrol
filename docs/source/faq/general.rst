@@ -31,9 +31,12 @@ Who is using Traffic Control?
 
 	`Augere Pakistan / QUBEE <http://www.qubee.com.pk>`_
 
+	`Qwilt <https://www.qwilt.com/>`_
+		Qwilt has a product called `Open Edge CDN <https://qwilt.com/solutions/edge-cloud-cdn/>`_ that is based on Traffic Control.
+
 How do I get help with Traffic Control?
 =======================================
-	Hop on to our Slack Channel by filling out `this form <https://goo.gl/Suzakj>`_, or send a question to our mailing list `here <mailto:users@trafficcontrol.incubator.apache.org>`_.
+	Join us on slack by registering with this `link <https://s.apache.org/atc-slack>`_, or send your questions to our mailing list `here <mailto:users@trafficcontrol.apache.org>`_.  Slack is usually the best forum for quick Q&A type issues -- like when you are getting a Traffic Control CDN up and running or if you have a question about configuration.  Any dicussions that could potentially lead to decisions being made about the project -- like a new feature -- should happen on the mailing list.
 	
 What is Rascal?
 ===============
@@ -49,4 +52,4 @@ What is Twelve Monkeys?
 
 What license is Traffic Control released under?
 ===============================================
-	See the `LICENSE file <https://github.com/apache/incubator-trafficcontrol/blob/master/LICENSE>`_
+	See the `LICENSE file <https://github.com/apache/trafficcontrol/blob/master/LICENSE>`_

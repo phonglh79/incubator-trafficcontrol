@@ -33,6 +33,7 @@ public class SteeringRegistry {
 	private final Map<String, Steering> registry = new HashMap<String, Steering>();
 	private final ObjectMapper objectMapper = new ObjectMapper(new JsonFactory());
 
+	@SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.AvoidDuplicateLiterals"})
 	public void update(final String json) {
 		Map<String, List<Steering>> m;
 		try {
@@ -56,7 +57,19 @@ public class SteeringRegistry {
 		registry.putAll(newSteerings);
 		for (final Steering steering : steerings) {
 			for (final SteeringTarget target : steering.getTargets()) {
-				LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has weight " + target.getWeight());
+				if (target.getGeolocation() != null && target.getGeoOrder() != 0) {
+					LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has geolocation [" + target.getLatitude() + ", "  + target.getLongitude() + "] and geoOrder " + target.getGeoOrder());
+				} else if (target.getGeolocation() != null && target.getWeight() > 0) {
+					LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has geolocation [" + target.getLatitude() + ", "  + target.getLongitude() + "] and weight " + target.getWeight());
+				} else if (target.getGeolocation() != null) {
+					LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has geolocation [" + target.getLatitude() + ", "  + target.getLongitude() + "]");
+				} else if (target.getWeight() > 0) {
+					LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has weight " + target.getWeight());
+				} else if (target.getOrder() != 0) { // this target has a specific order set
+					LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has order " + target.getOrder());
+				} else {
+					LOGGER.info("Steering " + steering.getDeliveryService() + " target " + target.getDeliveryService() + " now has weight " + target.getWeight() + " and order " + target.getOrder());
+				}
 			}
 		}
 	}

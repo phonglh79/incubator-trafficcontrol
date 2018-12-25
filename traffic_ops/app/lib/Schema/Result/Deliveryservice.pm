@@ -41,15 +41,19 @@ __PACKAGE__->table("deliveryservice");
   default_value: false
   is_nullable: 0
 
+=head2 anonymous_blocking_enabled
+  data_type: 'boolean'
+  default_value: false
+  is_nullable: 0
+
 =head2 dscp
 
   data_type: 'bigint'
   is_nullable: 0
 
-=head2 signed
+=head2 signing_algorithm
 
-  data_type: 'boolean'
-  default_value: false
+  data_type: 'deliveryservice_signature_type'
   is_nullable: 1
 
 =head2 qstring_ignore
@@ -81,11 +85,6 @@ __PACKAGE__->table("deliveryservice");
 =head2 dns_bypass_ttl
 
   data_type: 'bigint'
-  is_nullable: 1
-
-=head2 org_server_fqdn
-
-  data_type: 'text'
   is_nullable: 1
 
 =head2 type
@@ -139,7 +138,7 @@ __PACKAGE__->table("deliveryservice");
 =head2 max_dns_answers
 
   data_type: 'bigint'
-  default_value: 0
+  default_value: 5
   is_nullable: 1
 
 =head2 info_url
@@ -166,7 +165,7 @@ __PACKAGE__->table("deliveryservice");
 
   data_type: 'timestamp with time zone'
   default_value: current_timestamp
-  is_nullable: 1
+  is_nullable: 0
   original: {default_value => \"now()"}
 
 =head2 protocol
@@ -278,9 +277,39 @@ __PACKAGE__->table("deliveryservice");
   default_value: false
   is_nullable: 1
 
+=head2 multi_site_origin_algorithm
+
+  data_type: 'smallint'
+  is_nullable: 1
+
 =head2 geolimit_redirect_url
 
   data_type: 'text'
+  is_nullable: 1
+
+=head2 tenant_id
+
+  data_type: 'bigint'
+  is_foreign_key: 1
+  is_nullable: 1
+
+=head2 routing_name
+
+  data_type: 'text'
+  default_value: 'cdn'
+  is_nullable: 0
+
+=head2 deep_caching_type
+
+  data_type: 'enum'
+  default_value: 'NEVER'
+  extra: {custom_type_name => "deep_caching_type",list => ["NEVER","ALWAYS"]}
+  is_nullable: 1
+
+=head2 fq_pacing_rate
+
+  data_type: 'bigint'
+  default_value: 0
   is_nullable: 1
 
 =cut
@@ -297,10 +326,12 @@ __PACKAGE__->add_columns(
   { data_type => "text", is_nullable => 0 },
   "active",
   { data_type => "boolean", default_value => \"false", is_nullable => 0 },
+  "anonymous_blocking_enabled",
+  { data_type => "boolean", default_value => \"false", is_nullable => 0 },
   "dscp",
   { data_type => "bigint", is_nullable => 0 },
-  "signed",
-  { data_type => "boolean", default_value => \"false", is_nullable => 1 },
+  "signing_algorithm",
+  { data_type => "deliveryservice_signature_type", is_nullable => 1 },
   "qstring_ignore",
   { data_type => "smallint", is_nullable => 1 },
   "geo_limit",
@@ -313,8 +344,6 @@ __PACKAGE__->add_columns(
   { data_type => "text", is_nullable => 1 },
   "dns_bypass_ttl",
   { data_type => "bigint", is_nullable => 1 },
-  "org_server_fqdn",
-  { data_type => "text", is_nullable => 1 },
   "type",
   { data_type => "bigint", is_foreign_key => 1, is_nullable => 0 },
   "profile",
@@ -334,7 +363,7 @@ __PACKAGE__->add_columns(
   "long_desc_2",
   { data_type => "text", is_nullable => 1 },
   "max_dns_answers",
-  { data_type => "bigint", default_value => 0, is_nullable => 1 },
+  { data_type => "bigint", default_value => 5, is_nullable => 1 },
   "info_url",
   { data_type => "text", is_nullable => 1 },
   "miss_lat",
@@ -347,7 +376,7 @@ __PACKAGE__->add_columns(
   {
     data_type     => "timestamp with time zone",
     default_value => \"current_timestamp",
-    is_nullable   => 1,
+    is_nullable   => 0,
     original      => { default_value => \"now()" },
   },
   "protocol",
@@ -390,8 +419,26 @@ __PACKAGE__->add_columns(
   { data_type => "text", is_nullable => 1 },
   "logs_enabled",
   { data_type => "boolean", default_value => \"false", is_nullable => 1 },
+  "multi_site_origin_algorithm",
+  { data_type => "smallint", is_nullable => 1 },
   "geolimit_redirect_url",
   { data_type => "text", is_nullable => 1 },
+  "tenant_id",
+  { data_type => "bigint", is_foreign_key => 1, is_nullable => 1 },
+  "routing_name",
+  { data_type => "text", default_value => "cdn", is_nullable => 0 },
+  "deep_caching_type",
+  {
+    data_type => "enum",
+    default_value => "NEVER",
+    extra => {
+      custom_type_name => "deep_caching_type",
+      list => ["NEVER", "ALWAYS"],
+    },
+    is_nullable => 1,
+  },
+  "fq_pacing_rate",
+  { data_type => "bigint", default_value => 0, is_nullable => 1 },
 );
 
 =head1 PRIMARY KEY
@@ -410,7 +457,7 @@ __PACKAGE__->set_primary_key("id", "type");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_101208_ds_id_unique>
+=head2 C<idx_140234_ds_id_unique>
 
 =over 4
 
@@ -420,9 +467,9 @@ __PACKAGE__->set_primary_key("id", "type");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_101208_ds_id_unique", ["id"]);
+__PACKAGE__->add_unique_constraint("idx_140234_ds_id_unique", ["id"]);
 
-=head2 C<idx_101208_ds_name_unique>
+=head2 C<idx_140234_ds_name_unique>
 
 =over 4
 
@@ -432,7 +479,7 @@ __PACKAGE__->add_unique_constraint("idx_101208_ds_id_unique", ["id"]);
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_101208_ds_name_unique", ["xml_id"]);
+__PACKAGE__->add_unique_constraint("idx_140234_ds_name_unique", ["xml_id"]);
 
 =head1 RELATIONS
 
@@ -526,6 +573,21 @@ __PACKAGE__->has_many(
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
+=head2 origins
+
+Type: has_many
+
+Related object: L<Schema::Result::Origin>
+
+=cut
+
+__PACKAGE__->has_many(
+  "origins",
+  "Schema::Result::Origin",
+  { "foreign.deliveryservice" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
 =head2 profile
 
 Type: belongs_to
@@ -576,7 +638,7 @@ __PACKAGE__->has_many(
   { cascade_copy => 0, cascade_delete => 0 },
 );
 
-=head2 steering_target_deliveryservices_2s
+=head2 steering_target_targets
 
 Type: has_many
 
@@ -585,10 +647,30 @@ Related object: L<Schema::Result::SteeringTarget>
 =cut
 
 __PACKAGE__->has_many(
-  "steering_target_deliveryservices_2s",
+  "steering_target_targets",
   "Schema::Result::SteeringTarget",
-  { "foreign.deliveryservice" => "self.id" },
+  { "foreign.target" => "self.id" },
   { cascade_copy => 0, cascade_delete => 0 },
+);
+
+=head2 tenant
+
+Type: belongs_to
+
+Related object: L<Schema::Result::Tenant>
+
+=cut
+
+__PACKAGE__->belongs_to(
+  "tenant",
+  "Schema::Result::Tenant",
+  { id => "tenant_id" },
+  {
+    is_deferrable => 0,
+    join_type     => "LEFT",
+    on_delete     => "NO ACTION",
+    on_update     => "NO ACTION",
+  },
 );
 
 =head2 type
@@ -607,8 +689,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07046 @ 2017-01-02 16:07:07
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:qCU9AxWN09+5k2ETT6tqSQ
+# Created by DBIx::Class::Schema::Loader v0.07042 @ 2018-05-17 16:24:12
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Yjz2V+duaN88QPILxLqoHg
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration
 #

@@ -42,11 +42,16 @@ SELECT
     deliveryservice.xml_id AS xml_id,
     deliveryservice.id AS ds_id,
     deliveryservice.dscp AS dscp,
-    deliveryservice.signed AS signed,
+    deliveryservice.routing_name AS routing_name,
+    deliveryservice.signing_algorithm AS signing_algorithm,
     deliveryservice.qstring_ignore AS qstring_ignore,
-    deliveryservice.org_server_fqdn as org_server_fqdn,
+    (SELECT o.protocol::text || '://' || o.fqdn || rtrim(concat(':', o.port::text), ':')
+        FROM origin o
+        WHERE o.deliveryservice = deliveryservice.id
+        AND o.is_primary) as org_server_fqdn,
     deliveryservice.multi_site_origin as multi_site_origin,
     deliveryservice.range_request_handling as range_request_handling,
+    deliveryservice.fq_pacing_rate as fq_pacing_rate,
     deliveryservice.origin_shield as origin_shield,
     regex.pattern AS pattern,
     retype.name AS re_type,
@@ -59,7 +64,8 @@ SELECT
     deliveryservice.remap_text as remap_text,
     mid_header_rewrite as mid_header_rewrite,
     deliveryservice.protocol as protocol,
-    deliveryservice.profile as profile
+    deliveryservice.profile as profile,
+    deliveryservice.anonymous_blocking_enabled as anonymous_blocking_enabled
 FROM
     deliveryservice
         JOIN deliveryservice_regex ON deliveryservice_regex.deliveryservice = deliveryservice.id
@@ -79,7 +85,8 @@ __PACKAGE__->add_columns(
 	"multi_site_origin",           { data_type => "integer", is_nullable => 0 },
 	"ds_id",                       { data_type => "integer", is_nullable => 0 },
 	"dscp",                        { data_type => "integer", is_nullable => 0 },
-	"signed",                      { data_type => "integer", is_nullable => 0 },
+	"routing_name",                { data_type => "varchar", is_nullable => 0, size => 48 },
+	"signing_algorithm",           { data_type => "deliveryservice_signature_type", is_nullable => 1 },
 	"qstring_ignore",              { data_type => "integer", is_nullable => 0 },
 	"pattern",                     { data_type => "varchar", is_nullable => 0, size => 45 },
 	"re_type",                     { data_type => "varchar", is_nullable => 0, size => 45 },
@@ -93,8 +100,10 @@ __PACKAGE__->add_columns(
 	"remap_text",                  { data_type => "varchar", is_nullable => 0, size => 2048 },
 	"protocol",                    { data_type => "tinyint", is_nullable => 0, size => 4 },
 	"range_request_handling",      { data_type => "tinyint", is_nullable => 0, size => 4 },
+        "fq_pacing_rate",              { data_type => "bigint",  is_nullable => 0},
 	"origin_shield",               { data_type => "varchar", is_nullable => 0, size => 1024 },
 	"profile",                     { data_type => "integer", is_nullable => 1},
+    "anonymous_blocking_enabled",  { data_type => "boolean", is_nullable => 0 },
 );
 
 1;

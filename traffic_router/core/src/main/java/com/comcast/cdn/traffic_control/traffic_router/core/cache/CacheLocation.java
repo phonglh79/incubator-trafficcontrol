@@ -16,13 +16,16 @@
 package com.comcast.cdn.traffic_control.traffic_router.core.cache;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
+import org.apache.log4j.Logger;
 
 import com.comcast.cdn.traffic_control.traffic_router.geolocation.Geolocation;
 
@@ -31,10 +34,21 @@ import com.comcast.cdn.traffic_control.traffic_router.geolocation.Geolocation;
  */
 public class CacheLocation {
 
+	public static final Logger LOGGER = Logger.getLogger(CacheLocation.class);
+
 	private final String id;
 	private final Geolocation geolocation;
 
 	private final Map<String, Cache> caches;
+	private List<String> backupCacheGroups = null;
+	private boolean useClosestGeoOnBackupFailure = true;
+	private final Set<LocalizationMethod> enabledLocalizationMethods;
+
+	public enum LocalizationMethod {
+		DEEP_CZ,
+		CZ,
+		GEO
+	}
 
 	/**
 	 * Creates a CacheLocation with the specified ID at the specified location.
@@ -45,9 +59,47 @@ public class CacheLocation {
 	 *            the coordinates of this location
 	 */
 	public CacheLocation(final String id, final Geolocation geolocation) {
+		this(id, geolocation, null, true, new HashSet<>());
+	}
+
+	public CacheLocation(final String id, final Geolocation geoLocation, final Set<LocalizationMethod> enabledLocalizationMethods) {
+		this(id, geoLocation, null, true, enabledLocalizationMethods);
+	}
+
+	/**
+	 * Creates a CacheLocation with the specified ID at the specified location.
+	 * 
+	 * @param id
+	 *            the id of the location
+	 * @param geolocation
+	 *            the coordinates of this location
+	 *
+	 * @param backupCacheGroups
+	 *            the backup cache groups for this id
+	 *
+	 * @param useClosestGeoOnBackupFailure
+	 *            the backup fallback setting for this id
+	 */
+	public CacheLocation(
+			final String id,
+			final Geolocation geolocation,
+			final List<String> backupCacheGroups,
+			final boolean useClosestGeoOnBackupFailure,
+			final Set<LocalizationMethod> enabledLocalizationMethods
+	) {
 		this.id = id;
 		this.geolocation = geolocation;
+		this.backupCacheGroups = backupCacheGroups;
+		this.useClosestGeoOnBackupFailure = useClosestGeoOnBackupFailure;
+		this.enabledLocalizationMethods = enabledLocalizationMethods;
+		if (this.enabledLocalizationMethods.isEmpty()) {
+			this.enabledLocalizationMethods.addAll(Arrays.asList(LocalizationMethod.values()));
+		}
 		caches = new HashMap<String, Cache>();
+	}
+
+	public boolean isEnabledFor(final LocalizationMethod localizationMethod) {
+		return enabledLocalizationMethods.contains(localizationMethod);
 	}
 
 	/**
@@ -57,7 +109,29 @@ public class CacheLocation {
 	 *            the cache to add
 	 */
 	public void addCache(final Cache cache) {
+	    synchronized (caches) {
 			caches.put(cache.getId(), cache);
+		}
+	}
+
+	public void clearCaches() {
+		synchronized (caches) {
+			caches.clear();
+		}
+	}
+
+	public void loadDeepCaches(final Set<String> deepCacheNames, final CacheRegister cacheRegister) {
+	    synchronized (caches) {
+			if (caches.isEmpty() && deepCacheNames != null) {
+				for (final String deepCacheName : deepCacheNames) {
+					final Cache deepCache = cacheRegister.getCacheMap().get(deepCacheName);
+					if (deepCache != null) {
+						LOGGER.debug("DDC: Adding " + deepCacheName + " to " + getId());
+						caches.put(deepCache.getId(), deepCache);
+					}
+				}
+			}
+		}
 	}
 
 	@Override
@@ -101,6 +175,24 @@ public class CacheLocation {
 	 */
 	public Geolocation getGeolocation() {
 		return geolocation;
+	}
+
+	/**
+	 * Gets backupCacheGroups.
+	 * 
+	 * @return the backupCacheGroups
+	 */
+	public List<String> getBackupCacheGroups() {
+		return backupCacheGroups;
+	}
+
+	/**
+	 * Tests useClosestGeoOnBackupFailure.
+	 * 
+	 * @return useClosestGeoOnBackupFailure
+	 */
+	public boolean isUseClosestGeoLoc() {
+		return useClosestGeoOnBackupFailure;
 	}
 
 	/**

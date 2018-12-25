@@ -22,9 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringRegistry;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.FederationRegistry;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.log4j.Logger;
-import org.json.JSONException;
-import org.json.JSONObject;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheRegister;
 import com.comcast.cdn.traffic_control.traffic_router.core.dns.NameServer;
@@ -33,16 +32,18 @@ import com.comcast.cdn.traffic_control.traffic_router.core.util.TrafficOpsUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
+import com.comcast.cdn.traffic_control.traffic_router.core.loc.AnonymousIpDatabaseService;
 
 public class TrafficRouterManager implements ApplicationListener<ContextRefreshedEvent> {
 	private static final Logger LOGGER = Logger.getLogger(TrafficRouterManager.class);
 
 	public static final int DEFAULT_API_PORT = 3333;
 
-	private JSONObject state;
+	private JsonNode state;
 	private TrafficRouter trafficRouter;
 	private GeolocationService geolocationService;
 	private GeolocationService geolocationService6;
+	private AnonymousIpDatabaseService anonymousIpService;
 	private StatTracker statTracker;
 	private static final Map<String, Long> timeTracker = new ConcurrentHashMap<String, Long>();
 	private NameServer nameServer;
@@ -68,7 +69,7 @@ public class TrafficRouterManager implements ApplicationListener<ContextRefreshe
 		this.nameServer = nameServer;
 	}
 
-	public boolean setState(final JSONObject jsonObject) throws UnknownHostException {
+	public boolean setState(final JsonNode jsonObject) throws UnknownHostException {
 		trackEvent("lastCacheStateCheck");
 
 		if (jsonObject == null) {
@@ -92,14 +93,14 @@ public class TrafficRouterManager implements ApplicationListener<ContextRefreshe
 		return trafficRouter;
 	}
 
-	public void setCacheRegister(final CacheRegister cacheRegister) throws IOException, JSONException {
+	public void setCacheRegister(final CacheRegister cacheRegister) throws IOException {
 		trackEvent("lastConfigCheck");
 
 		if (cacheRegister == null) {
 			return;
 		}
 
-		final TrafficRouter tr = new TrafficRouter(cacheRegister, geolocationService, geolocationService6, statTracker, trafficOpsUtils, federationRegistry, this);
+		final TrafficRouter tr = new TrafficRouter(cacheRegister, geolocationService, geolocationService6, anonymousIpService, statTracker, trafficOpsUtils, federationRegistry, this);
 		tr.setSteeringRegistry(steeringRegistry);
 		synchronized(this) {
 			if (state != null) {
@@ -125,6 +126,10 @@ public class TrafficRouterManager implements ApplicationListener<ContextRefreshe
 
 	public void setGeolocationService6(final GeolocationService geolocationService) {
 		this.geolocationService6 = geolocationService;
+	}
+
+	public void setAnonymousIpService(final AnonymousIpDatabaseService anonymousIpService) {
+		this.anonymousIpService = anonymousIpService;
 	}
 
 	public void setStatTracker(final StatTracker statTracker) {

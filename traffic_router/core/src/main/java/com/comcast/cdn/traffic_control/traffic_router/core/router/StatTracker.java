@@ -29,8 +29,6 @@ import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Tr
 
 @SuppressWarnings("PMD.ExcessivePublicCount")
 public class StatTracker {
-	private String dnsRoutingName;
-	private String httpRoutingName;
 
 	public static class Tallies {
 
@@ -45,6 +43,12 @@ public class StatTracker {
 		}
 		public void setGeoCount(final int geoCount) {
 			this.geoCount = geoCount;
+		}
+		public int getDeepCzCount() {
+			return deepCzCount;
+		}
+		public void setDeepCzCount(final int deepCzCount) {
+			this.deepCzCount = deepCzCount;
 		}
 		public int getDsrCount() {
 			return dsrCount;
@@ -91,6 +95,7 @@ public class StatTracker {
 
 		public int czCount;
 		public int geoCount;
+		public int deepCzCount;
 		public int missCount;
 		public int dsrCount;
 		public int errCount;
@@ -106,12 +111,12 @@ public class StatTracker {
 		}
 
 		public static enum ResultType {
-			ERROR, CZ, GEO, MISS, STATIC_ROUTE, DS_REDIRECT, DS_MISS, INIT, FED, RGDENY, RGALT, GEO_REDIRECT
+			ERROR, CZ, GEO, MISS, STATIC_ROUTE, DS_REDIRECT, DS_MISS, INIT, FED, RGDENY, RGALT, GEO_REDIRECT, DEEP_CZ, ANON_BLOCK
 		}
 
 		public enum ResultDetails {
 			NO_DETAILS, DS_NOT_FOUND, DS_TLS_MISMATCH, DS_NO_BYPASS, DS_BYPASS, DS_CZ_ONLY, DS_CLIENT_GEO_UNSUPPORTED, GEO_NO_CACHE_FOUND,
-			REGIONAL_GEO_NO_RULE, REGIONAL_GEO_ALTERNATE_WITHOUT_CACHE, REGIONAL_GEO_ALTERNATE_WITH_CACHE
+			REGIONAL_GEO_NO_RULE, REGIONAL_GEO_ALTERNATE_WITHOUT_CACHE, REGIONAL_GEO_ALTERNATE_WITH_CACHE, DS_CZ_BACKUP_CG
 		}
 
 		long time;
@@ -125,6 +130,11 @@ public class StatTracker {
 		boolean isClientGeolocationQueried;
 
 		RegionalGeoResult regionalGeoResult;
+		boolean fromBackupCzGroup;
+		// in memory switch to track if need to continue geo based
+		// defaulting to true, changes the false by router at runtime when primary cache group is configured using fallbackToClosedGeoLoc
+		// to false and backup group list is configured and failing
+		boolean continueGeo = true;
 
 		public Track() {
 			start();
@@ -178,6 +188,14 @@ public class StatTracker {
 		}
 		public RegionalGeoResult getRegionalGeoResult() {
 			return regionalGeoResult;
+		}
+
+		public void setFromBackupCzGroup(final boolean fromBackupCzGroup) {
+			this.fromBackupCzGroup = fromBackupCzGroup;
+		}
+
+		public boolean isFromBackupCzGroup() {
+			return fromBackupCzGroup;
 		}
 
 		public final void start() {
@@ -276,6 +294,9 @@ public class StatTracker {
 		case GEO:
 			tallies.geoCount++;
 			break;
+		case DEEP_CZ:
+			tallies.deepCzCount++;
+			break;
 		case MISS:
 			tallies.missCount++;
 			break;
@@ -318,13 +339,13 @@ public class StatTracker {
 						rt = RouteType.DNS;
 
 						if (i == 0) {
-							dsName.insert(0, getDnsRoutingName() + ".");
+							dsName.insert(0, ds.getRoutingName() + ".");
 						} else {
 							continue;
 						}
 					} else {
 						rt = RouteType.HTTP;
-						dsName.insert(0, getHttpRoutingName() + ".");
+						dsName.insert(0, ds.getRoutingName() + ".");
 					}
 
 					t.setRouteType(rt, dsName.toString());
@@ -335,17 +356,5 @@ public class StatTracker {
 				}
 			}
 		}
-	}
-	private String getDnsRoutingName() {
-		return dnsRoutingName;
-	}
-	public void setDnsRoutingName(final String dnsRoutingName) {
-		this.dnsRoutingName = dnsRoutingName;
-	}
-	private String getHttpRoutingName() {
-		return httpRoutingName;
-	}
-	public void setHttpRoutingName(final String httpRoutingName) {
-		this.httpRoutingName = httpRoutingName;
 	}
 }

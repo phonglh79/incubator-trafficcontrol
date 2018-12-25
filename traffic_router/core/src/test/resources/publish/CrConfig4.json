@@ -117,7 +117,8 @@
           "edge-cache-012.steering-target-1.thecdn.example.com",
           "edge-cache-012.steering-target-1-b-b.thecdn.example.com"
         ],
-        "http-only-test": ["edge-cache-012.http-only-test.thecdn.example.com"]
+        "http-only-test": ["edge-cache-012.http-only-test.thecdn.example.com"],
+        "https-additional": ["edge-cache-012.http-only-test.thecdn.example.com"]
       }
     },
     "edge-cache-020": {
@@ -561,6 +562,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -608,6 +610,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -656,6 +659,7 @@
       },
       "domains": ["steering-target-2.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -698,6 +702,7 @@
       },
       "domains": ["test.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -741,6 +746,7 @@
       "bypassDestination": {"DNS": {"ttl": "30"}},
       "domains": ["federation-test.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "edge",
       "matchsets": [
         {
           "protocol": "DNS",
@@ -803,6 +809,7 @@
       },
       "domains": ["steering-target-1.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [
         {
           "protocol": "HTTP",
@@ -858,6 +865,7 @@
       },
       "domains": ["steering-target-4.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -904,6 +912,7 @@
       },
       "domains": ["steering-target-3.thecdn.example.com"],
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "matchsets": [{
         "protocol": "HTTP",
         "matchlist": [{
@@ -959,6 +968,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -976,6 +986,50 @@
       },
       "geolocationProvider": "maxmindGeolocationService"
     },
+    "https-additional": {
+      "sslEnabled": "true",
+      "protocol": {
+        "acceptHttp" : "false",
+        "acceptHttps" : "true",
+        "redirectToHttps" : "false"
+      },
+      "domains": ["https-additional.thecdn.example.com"],
+      "missLocation": {
+        "long": "-87.627778",
+        "lat": "41.881944"
+      },
+      "ttls": {
+        "AAAA": "3600",
+        "SOA": "7200",
+        "A": "3600",
+        "NS": "3600"
+      },
+      "ttl": "3600",
+      "ip6RoutingEnabled": "false",
+      "dispersion": {
+        "limit": 1,
+        "shuffled": "true"
+      },
+      "coverageZoneOnly": "false",
+      "routingName": "tr",
+      "regionalGeoBlocking": "false",
+      "matchsets": [{
+        "protocol": "HTTP",
+        "matchlist": [{
+          "regex": ".*\\.https-additional\\..*",
+          "match-type": "HOST"
+        }]
+      }],
+      "soa": {
+        "expire": "604800",
+        "minimum": "30",
+        "admin": "admin@thecdn.example.com",
+        "retry": "7200",
+        "refresh": "28800"
+      },
+      "geolocationProvider": "maxmindGeolocationService"
+    },
+
     "http-and-https-test": {
       "sslEnabled": "true",
       "protocol": {
@@ -1001,6 +1055,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -1043,6 +1098,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -1085,6 +1141,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "tr",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "HTTP",
@@ -1127,6 +1184,7 @@
         "shuffled": "true"
       },
       "coverageZoneOnly": "false",
+      "routingName": "edge",
       "regionalGeoBlocking": "false",
       "matchsets": [{
         "protocol": "DNS",
@@ -1188,10 +1246,10 @@
     }
   },
   "config": {
-    "certificate.api.url": "http://${toHostname}/api/1.2/cdns/name/${cdnName}/sslkeys.json",
-    "federationmapping.polling.url": "http://${toHostname}/internal/api/1.2/federations.json",
+    "certificate.api.url": "http://${toHostname}/api/1.3/cdns/name/${cdnName}/sslkeys.json",
+    "federationmapping.polling.url": "http://${toHostname}/internal/api/1.3/federations.json",
     "federationmapping.polling.interval": "600000",
-    "steeringmapping.polling.url": "http://${toHostname}/internal/api/1.2/steering.json",
+    "steeringmapping.polling.url": "http://${toHostname}/internal/api/1.3/steering.json",
     "steeringmapping.polling.interval": "15000",
     "weight": "1.0",
     "requestHeaders": [
@@ -1210,7 +1268,7 @@
     },
     "coveragezone.polling.interval": "86400000",
     "regional_geoblock.polling.url.renamed": "http://testing-tm-01.cdn.example.com/some/path",
-    "keystore.auth.url": "http://localhost:3000/api/1.1/user/login",
+    "keystore.auth.url": "http://localhost:3000/api/1.3/user/login",
     "neustar.polling.interval": "12800000",
     "geolocation6.polling.interval": "86400000",
     "domain_name": "thecdn.example.com",
@@ -1223,7 +1281,7 @@
       "refresh": "28800"
     },
     "coveragezone.polling.url": "http://localhost:8889/czf.json",
-    "api.auth.url": "http://${toHostname}/api/1.1/user/login",
+    "api.auth.url": "http://${toHostname}/api/1.3/user/login",
     "certificates.polling.interval": "10000",
     "dnssec.enabled": "false"
   }

@@ -1,95 +1,104 @@
-.. 
-.. 
+..
+..
 .. Licensed under the Apache License, Version 2.0 (the "License");
 .. you may not use this file except in compliance with the License.
 .. You may obtain a copy of the License at
-.. 
+..
 ..     http://www.apache.org/licenses/LICENSE-2.0
-.. 
+..
 .. Unless required by applicable law or agreed to in writing, software
 .. distributed under the License is distributed on an "AS IS" BASIS,
 .. WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 .. See the License for the specific language governing permissions and
 .. limitations under the License.
-.. 
+..
 
-.. _rl-multi-site-origin-qht:
+.. _multi-site-origin-qht:
 
 ***************************
-Configure Multi Site Origin
+Configure Multi-Site Origin
 ***************************
 
-1) Create "cachegroups" for the origin locations, and assign the appropriate parent-child relationship between the mid cg's and org cgs (click the image to see full size):
+The following steps will take you through the procedure of setting up a Multi-Site Origin (MSO).
 
-.. image:: C5C4CD22-949A-48FD-8976-C673083E2177.png
-	:scale: 100%
-	:align: center
+#. Create Cache Groups for the origin locations, and assign the appropriate parent-child relationship between the mid and origin Cache Groups. Each mid Cache Group can be assigned a primary and secondary origin parent Cache Group. When the mid cache parent configuration is generated, origins in the primary Cache Groups will be listed first, followed by origins in the secondary Cache Group. Origin servers assigned to the Delivery Service that are assigned to neither the primary nor secondary Cache Groups will be listed last.
 
-2) Create a profile to assign to each of the origins:
+	.. figure:: multi_site/00.png
+		:scale: 100%
+		:align: center
 
-.. image:: 19BB6EC1-B6E8-4D22-BFA0-B7D6A9708B42.png
-	:scale: 100%
-	:align: center
+#. Create a profile to assign to each of the origins:
 
-3) Create server entries for the origination vips:
+	.. figure:: multi_site/01.png
+		:scale: 100%
+		:align: center
 
-.. image:: D28614AA-9758-45ED-9EFD-3A284FC4218E.png
-	:scale: 100%
-	:align: center
+#. Create server entries for the origination vips:
 
-4) Check the multi-site check box in the delivery service screen:
+	.. figure:: multi_site/02.png
+		:scale: 100%
+		:align: center
 
-.. image:: mso-enable.png
-	:scale: 100%
-	:align: center
+#. Check the multi-site check box in the delivery service screen:
 
-5) Assign the org servers to the delivery service that will have the multi site feature:
+	.. figure:: multi_site/mso-enable.png
+		:scale: 100%
+		:align: center
 
-.. image:: 066CEF4F-C1A3-4A89-8B52-4F72B0531367.png
-	:scale: 100%
-	:align: center
+#. Assign the org servers to the delivery service that will have the multi site feature. Org servers assigned to a delivery service with multi-site checked will be assigned to be the origin servers for this DS.
 
-.. Note:: “Origin Server Base URL” uniqueness: In order to enable MID caches to distinguish delivery services by different MSO algorithms while performing parent failover, it requires that “Origin Server Base URL” (OFQDN) for each MSO enabled delivery service is unique unless the exceptions listed afterwards. This means that the OFQDN of a MSO enabled delivery service should be different with the OFQDNs of any other delivery service, regardless of whether they are MSO enabled or not. The exceptions are: 
-       1) If there are multiple CDNs created on the same Traffic Ops, delivery services across different CDNs may have the same OFQDN configured.
-       2) If several delivery services in the same CDN have the same MSO algorithm configured, they may share the same OFQDN.
-       3) If delivery services are assigned with different MID cache groups respectively, they can share the same OFQDN.
+	.. figure:: multi_site/03.png
+		:scale: 100%
+		:align: center
 
-6) Select an option from the "Multi Site Origin Algorithm" drop-down list. Four MSO algorithms are supported:
+	.. Note:: “Origin Server Base URL” uniqueness: In order to enable MID caches to distinguish delivery services by different MSO algorithms while performing parent fail-over, it requires that “Origin Server Base URL” (OSBU) for each MSO-enabled Delivery Service is unique. This means that the OSBU of a MSO-enabled Delivery Service should be different with the OSBUs of any other Delivery Service, regardless of whether they are MSO-enabled or not. The exceptions to this rule are:
 
-+------------------+--------------------------------------------------------------------------------------------------------------------+
-|     Option       |                                                            Description                                             |
-+==================+====================================================================================================================+
-| Consistent hash  | Origin server selection is based on the consistent hash of requested URLs.                                         |
-+------------------+--------------------------------------------------------------------------------------------------------------------+
-| Primary/back     | Round robin selection does not occur. The first origin server is selected unless it fails.                         |
-|                  | If the first fails, the second and other following origin servers will be tried by order.                          |
-|                  | Order is defined by 2 factors - if the origin server's cachegroup is configured as the                             |
-|                  | parent cachegroup for the mid, then this server will be used as the primary. The same rules                        |
-|                  | apply for secondary parents, in order.  Within the cachegroups, the rank parameter will sort                       |
-|                  | order further. If no parents are defined at the mid, then only rank is considered.                                 |  
-+------------------+--------------------------------------------------------------------------------------------------------------------+
-| Strict           | MID caches serve requests strictly in turn. For example: origin server 1 serves the first request,                 |
-| round-robin      | origin server 2 serves the second request, and so on.                                                              |
-+------------------+--------------------------------------------------------------------------------------------------------------------+
-| IP based         | MID cache goes through the origin server list in a round robin-based on the IP address of EDGE cache.              |
-| round-robin      |                                                                                                                    |
-+------------------+--------------------------------------------------------------------------------------------------------------------+
+		- If there are multiple CDNs created on the same Traffic Ops, delivery services across different CDNs may have the same OSBU configured.
+		- If several delivery services in the same CDN have the same MSO algorithm configured, they may share the same OSBU.
+		- If delivery services are assigned with different MID cache groups respectively, they can share the same OSBU.
+		- This OSBU must be valid - ATS will perform a DNS lookup on this FQDN even if IPs, not DNS, are used in the parent.config.
+		- The OSBU entered as the "Origin Server Base URL" will be sent to the origins as a host header. All origins must be configured to respond to this host.
 
-7) Optionally, there are two configuration options that can set the order of the origins used if "Primary/backup" is selected for "Multi Site Origin Algorithm". By creating location-based cachegroups and assigning the origin servers accordingly and defining these cachegroups as parents for specific mids, location-based primary/secondary selection can be made.   If primary/secondary selection should be the same for all mids, then a new parameter “rank” should be configured for each origin server profile. Origin servers with lower values of rank have higher ranking in the origin server list on MID caches, e.g. OS with rank of "2" precedes OS with the rank of "5". For any OS, if rank value is not defined in its profile, its rank value will default to “1”.  In the event that both location based cachegroups are used alongside rank, sorting will be by cachegroup first and rank second.  In this way it is possible to have specific backup servers for use at specific locations.
+#. Create a delivery service profile. This must be done to set the MSO algorithm. Also, as of ATS 6.x, multi-site options must be set as parameters within the parent.config. Header rewrite parameters will be ignored. See `ATS parent.config <https://docs.trafficserver.apache.org/en/6.2.x/admin-guide/files/parent.config.en.html>`_ for more details. These parameters are now handled by the creation of a delivery service profile.
 
-.. image:: mso-rank.png
-	:scale: 60%
-	:align: center
+	a) Create a profile of the type DS_PROFILE for the delivery service in question.
 
-8) Assign the parent.config location parameter to the MID profile:
+		.. figure:: multi_site/ds_profile.png
+			:scale: 50%
+			:align: center
 
-.. image:: D22DCAA3-18CC-48F4-965B-5312993F9820.png
-	:scale: 100%
-	:align: center
+	#) Click "Show profile parameters" to bring up the parameters screen for the profile. Create parameters for the following:
+
+		+----------------------------------------+------------------+--------------------------+-------------------------+
+		| Parameter Name                         | Config File Name | Value                    | ATS parent.config value |
+		+========================================+==================+==========================+=========================+
+		| mso.algorithm                          | parent.config    | true, false, strict,     | round_robin             |
+		|                                        |                  | consistent_hash          |                         |
+		+----------------------------------------+------------------+--------------------------+-------------------------+
+		| mso.parent_retry                       | parent.config    | simple_retry, both,      | parent_retry            |
+		|                                        |                  | unavailable_server_retry |                         |
+		+----------------------------------------+------------------+--------------------------+-------------------------+
+		| mso.unavailable_server_retry_responses | parent.config    | list of server response  | defaults to the value   |
+		|                                        |                  | codes, eg "500,502,503"  | in records.config       |
+		|                                        |                  |                          | when unused.            |
+		+----------------------------------------+------------------+--------------------------+-------------------------+
+		| mso.max_simple_retries                 | parent.config    | Nubmer of retries made   | defaults to the value   |
+		|                                        |                  | after a 4xx error        | in records.config       |
+		|                                        |                  |                          | when unused.            |
+		+----------------------------------------+------------------+--------------------------+-------------------------+
+		| mso.max_unavailable_server_retries     | parent.config    | Nubmer of retries made   | defaults to the value   |
+		|                                        |                  | after a 5xx error        | in records.config       |
+		|                                        |                  |                          | when unused.            |
+		+----------------------------------------+------------------+--------------------------+-------------------------+
 
 
-9) Configure the mid hdr_rewrite on the delivery service, example: ::
+		.. figure:: multi_site/ds_profile_parameters.png
+			:scale: 100%
+			:align: center
 
-	cond %{REMAP_PSEUDO_HOOK} __RETURN__ set-config proxy.config.http.parent_origin.dead_server_retry_enabled 1 __RETURN__ set-config proxy.config.http.parent_origin.simple_retry_enabled 1 __RETURN__ set-config proxy.config.http.parent_origin.simple_retry_response_codes "400,404,412" __RETURN__ set-config proxy.config.http.parent_origin.dead_server_retry_response_codes "502,503" __RETURN__ set-config proxy.config.http.connect_attempts_timeout 2 __RETURN__ set-config proxy.config.http.connect_attempts_max_retries 2 __RETURN__ set-config proxy.config.http.connect_attempts_max_retries_dead_server 1 __RETURN__ set-config proxy.config.http.transaction_active_timeout_in 5 [L] __RETURN__
+	#) In the delivery service page, select the newly created DS_PROFILE and save the delivery service.
 
-10) Turn on parent_proxy_routing in the MID profile.
+#. Turn on parent_proxy_routing in the MID profile.
+
+.. Note:: Support for multisite configurations with single-layer CDNs is now available.  If a cachegroup's defined parents are either blank or of the type ORG_LOC, that cache's parent.config will be generated as a top layer cache, even if it is an edge.  In the past, parent.config generation was strictly determined by cache type. The new method examines the parent cachegroup definitions and generates the parent.config accordingly.
+

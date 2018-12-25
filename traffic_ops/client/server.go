@@ -17,115 +17,239 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/apache/trafficcontrol/lib/go-tc"
 )
 
-// ServerDetailResponse is the JSON object returned for a single server
-type ServerDetailResponse struct {
-	Response Server `json:"response"`
+const (
+	API_v13_Servers = "/api/1.3/servers"
+)
+
+// Create a Server
+func (to *Session) CreateServer(server tc.Server) (tc.Alerts, ReqInf, error) {
+
+	var remoteAddr net.Addr
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
+
+	if server.CachegroupID == 0 && server.Cachegroup != "" {
+		cg, _, err := to.GetCacheGroupByName(server.Cachegroup)
+		if err != nil {
+			return tc.Alerts{}, ReqInf{}, errors.New("no cachegroup named " + server.Cachegroup + ":" + err.Error())
+		}
+		if len(cg) == 0 {
+			return tc.Alerts{}, ReqInf{}, errors.New("no cachegroup named " + server.Cachegroup)
+		}
+		server.CachegroupID = cg[0].ID
+	}
+	if server.CDNID == 0 && server.CDNName != "" {
+		c, _, err := to.GetCDNByName(server.CDNName)
+		if err != nil {
+			return tc.Alerts{}, ReqInf{}, errors.New("no CDN named " + server.CDNName + ":" + err.Error())
+		}
+		if len(c) == 0 {
+			return tc.Alerts{}, ReqInf{}, errors.New("no CDN named " + server.CDNName)
+		}
+		server.CDNID = c[0].ID
+	}
+	if server.PhysLocationID == 0 && server.PhysLocation != "" {
+		ph, _, err := to.GetPhysLocationByName(server.PhysLocation)
+		if err != nil {
+			return tc.Alerts{}, ReqInf{}, errors.New("no physlocation named " + server.PhysLocation + ":" + err.Error())
+		}
+		if len(ph) == 0 {
+			return tc.Alerts{}, ReqInf{}, errors.New("no physlocation named " + server.PhysLocation)
+		}
+		server.PhysLocationID = ph[0].ID
+	}
+	if server.ProfileID == 0 && server.Profile != "" {
+		pr, _, err := to.GetProfileByName(server.Profile)
+		if err != nil {
+			return tc.Alerts{}, ReqInf{}, errors.New("no profile named " + server.Profile + ":" + err.Error())
+		}
+		if len(pr) == 0 {
+			return tc.Alerts{}, ReqInf{}, errors.New("no profile named " + server.Profile)
+		}
+		server.ProfileID = pr[0].ID
+	}
+	if server.StatusID == 0 && server.Status != "" {
+		st, _, err := to.GetStatusByName(server.Status)
+		if err != nil {
+			return tc.Alerts{}, ReqInf{}, errors.New("no status named " + server.Status + ":" + err.Error())
+		}
+		if len(st) == 0 {
+			return tc.Alerts{}, ReqInf{}, errors.New("no status named " + server.Status)
+		}
+		server.StatusID = st[0].ID
+	}
+	if server.TypeID == 0 && server.Type != "" {
+		ty, _, err := to.GetTypeByName(server.Type)
+		if err != nil {
+			return tc.Alerts{}, ReqInf{}, errors.New("no type named " + server.Type + ":" + err.Error())
+		}
+		if len(ty) == 0 {
+			return tc.Alerts{}, ReqInf{}, errors.New("no type named " + server.Type)
+		}
+		server.TypeID = ty[0].ID
+	}
+	reqBody, err := json.Marshal(server)
+	if err != nil {
+		return tc.Alerts{}, reqInf, err
+	}
+
+	resp, remoteAddr, err := to.request(http.MethodPost, API_v13_Servers, reqBody)
+	if err != nil {
+		return tc.Alerts{}, reqInf, err
+	}
+	defer resp.Body.Close()
+	var alerts tc.Alerts
+	err = json.NewDecoder(resp.Body).Decode(&alerts)
+	return alerts, reqInf, nil
 }
 
-// ServerResponse ...
-type ServerResponse struct {
-	Response []Server `json:"response"`
-}
+// Update a Server by ID
+func (to *Session) UpdateServerByID(id int, server tc.Server) (tc.Alerts, ReqInf, error) {
 
-// Server ...
-type Server struct {
-	DomainName    string `json:"domainName"`
-	HostName      string `json:"hostName"`
-	ID            int    `json:"id"`
-	IloIPAddress  string `json:"iloIpAddress"`
-	IloIPGateway  string `json:"iloIpGateway"`
-	IloIPNetmask  string `json:"iloIpNetmask"`
-	IloPassword   string `json:"iloPassword"`
-	IloUsername   string `json:"iloUsername"`
-	InterfaceMtu  int    `json:"interfaceMtu"`
-	InterfaceName string `json:"interfaceName"`
-	IP6Address    string `json:"ip6Address"`
-	IP6Gateway    string `json:"ip6Gateway"`
-	IPAddress     string `json:"ipAddress"`
-	IPGateway     string `json:"ipGateway"`
-	IPNetmask     string `json:"ipNetmask"`
-
-	LastUpdated    string `json:"lastUpdated"`
-	Cachegroup     string `json:"cachegroup"`
-	MgmtIPAddress  string `json:"mgmtIpAddress"`
-	MgmtIPGateway  string `json:"mgmtIpGateway"`
-	MgmtIPNetmask  string `json:"mgmtIpNetmask"`
-	PhysLocation   string `json:"physLocation"`
-	Profile        string `json:"profile"`
-	ProfileDesc    string `json:"profileDesc"`
-	CDNName        string `json:"cdnName"`
-	Rack           string `json:"rack"`
-	RouterHostName string `json:"routerHostName"`
-	RouterPortName string `json:"routerPortName"`
-	Status         string `json:"status"`
-	TCPPort        int    `json:"tcpPort"`
-	Type           string `json:"type"`
-	XMPPID         string `json:"xmppId"`
-	XMPPPasswd     string `json:"xmppPasswd"`
+	var remoteAddr net.Addr
+	reqBody, err := json.Marshal(server)
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
+	if err != nil {
+		return tc.Alerts{}, reqInf, err
+	}
+	route := fmt.Sprintf("%s/%d", API_v13_Servers, id)
+	resp, remoteAddr, err := to.request(http.MethodPut, route, reqBody)
+	if err != nil {
+		return tc.Alerts{}, reqInf, err
+	}
+	defer resp.Body.Close()
+	var alerts tc.Alerts
+	err = json.NewDecoder(resp.Body).Decode(&alerts)
+	return alerts, reqInf, nil
 }
 
 // Servers gets an array of servers
-func (to *Session) Servers() ([]Server, error) {
-	url := "/api/1.2/servers.json"
-	resp, err := to.request("GET", url, nil)
+// Deprecated: use GetServers
+func (to *Session) Servers() ([]tc.Server, error) {
+	s, _, err := to.GetServers()
+	return s, err
+}
+
+// Returns a list of Servers
+func (to *Session) GetServers() ([]tc.Server, ReqInf, error) {
+	resp, remoteAddr, err := to.request(http.MethodGet, API_v13_Servers, nil)
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
 	if err != nil {
-		return nil, err
+		return nil, reqInf, err
 	}
 	defer resp.Body.Close()
 
-	var data ServerResponse
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, err
-	}
-
-	return data.Response, nil
+	var data tc.ServersResponse
+	err = json.NewDecoder(resp.Body).Decode(&data)
+	return data.Response, reqInf, nil
 }
 
 // Server gets a server by hostname
-func (to *Session) Server(name string) (*Server, error) {
-	url := fmt.Sprintf("/api/1.2/servers/hostname/%s/details", name)
-	resp, err := to.request("GET", url, nil)
+// Deprecated: use GetServer
+func (to *Session) Server(name string) (*tc.Server, error) {
+	s, _, err := to.GetServerByHostName(name)
+	if len(s) > 0 {
+		return &s[0], err
+	}
+	return nil, errors.New("not found")
+}
+
+// GET a Server by the Server ID
+func (to *Session) GetServerByID(id int) ([]tc.Server, ReqInf, error) {
+	route := fmt.Sprintf("%s/%d", API_v13_Servers, id)
+	resp, remoteAddr, err := to.request(http.MethodGet, route, nil)
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
 	if err != nil {
-		return nil, err
+		return nil, reqInf, err
 	}
 	defer resp.Body.Close()
 
-	data := ServerDetailResponse{}
+	var data tc.ServersResponse
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, err
+		return nil, reqInf, err
 	}
 
-	return &data.Response, nil
+	return data.Response, reqInf, nil
+}
+
+// GET a Server by the Server hostname
+func (to *Session) GetServerByHostName(hostName string) ([]tc.Server, ReqInf, error) {
+	url := fmt.Sprintf("%s?hostName=%s", API_v13_Servers, hostName)
+	resp, remoteAddr, err := to.request(http.MethodGet, url, nil)
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
+	if err != nil {
+		return nil, reqInf, err
+	}
+	defer resp.Body.Close()
+
+	var data tc.ServersResponse
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, reqInf, err
+	}
+
+	return data.Response, reqInf, nil
+}
+
+// DELETE a Server by ID
+func (to *Session) DeleteServerByID(id int) (tc.Alerts, ReqInf, error) {
+	route := fmt.Sprintf("%s/%d", API_v13_Servers, id)
+	resp, remoteAddr, err := to.request(http.MethodDelete, route, nil)
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
+	if err != nil {
+		return tc.Alerts{}, reqInf, err
+	}
+	defer resp.Body.Close()
+	var alerts tc.Alerts
+	err = json.NewDecoder(resp.Body).Decode(&alerts)
+	return alerts, reqInf, nil
 }
 
 // ServersByType gets an array of serves of a specified type.
-func (to *Session) ServersByType(qparams url.Values) ([]Server, error) {
-	url := fmt.Sprintf("/api/1.2/servers.json?%s", qparams.Encode())
-	resp, err := to.request("GET", url, nil)
+// Deprecated: use GetServersByType
+func (to *Session) ServersByType(qparams url.Values) ([]tc.Server, error) {
+	ss, _, err := to.GetServersByType(qparams)
+	return ss, err
+}
+
+func (to *Session) GetServersByType(qparams url.Values) ([]tc.Server, ReqInf, error) {
+	url := fmt.Sprintf("%s.json?%s", API_v13_Servers, qparams.Encode())
+	resp, remoteAddr, err := to.request(http.MethodGet, url, nil)
+	reqInf := ReqInf{CacheHitStatus: CacheHitStatusMiss, RemoteAddr: remoteAddr}
 	if err != nil {
-		return nil, err
+		return nil, reqInf, err
 	}
 	defer resp.Body.Close()
 
-	var data ServerResponse
+	var data tc.ServersResponse
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, err
+		return nil, reqInf, err
 	}
 
-	return data.Response, nil
+	return data.Response, reqInf, nil
 }
 
 // ServersFqdn returns a the full domain name for the server short name passed in.
+// Deprecated: use GetServersFQDN
 func (to *Session) ServersFqdn(n string) (string, error) {
+	f, _, err := to.GetServerFQDN(n)
+	return f, err
+}
+
+func (to *Session) GetServerFQDN(n string) (string, ReqInf, error) {
+	// TODO fix to only request one server
 	fdn := ""
-	servers, err := to.Servers()
+	servers, reqInf, err := to.GetServers()
 	if err != nil {
-		return "Error", err
+		return "Error", reqInf, err
 	}
 
 	for _, server := range servers {
@@ -134,18 +258,24 @@ func (to *Session) ServersFqdn(n string) (string, error) {
 		}
 	}
 	if fdn == "" {
-		return "Error", fmt.Errorf("No Server %s found", n)
+		return "Error", reqInf, fmt.Errorf("No Server %s found", n)
 	}
-	return fdn, nil
+	return fdn, reqInf, nil
 }
 
 // ServersShortNameSearch returns a slice of short server names that match a greedy match.
+// Deprecated: use GetServersShortNameSearch
 func (to *Session) ServersShortNameSearch(shortname string) ([]string, error) {
+	ss, _, err := to.GetServersShortNameSearch(shortname)
+	return ss, err
+}
+
+func (to *Session) GetServersShortNameSearch(shortname string) ([]string, ReqInf, error) {
 	var serverlst []string
-	servers, err := to.Servers()
+	servers, reqInf, err := to.GetServers()
 	if err != nil {
 		serverlst = append(serverlst, "N/A")
-		return serverlst, err
+		return serverlst, reqInf, err
 	}
 	for _, server := range servers {
 		if strings.Contains(server.HostName, shortname) {
@@ -154,7 +284,7 @@ func (to *Session) ServersShortNameSearch(shortname string) ([]string, error) {
 	}
 	if len(serverlst) == 0 {
 		serverlst = append(serverlst, "N/A")
-		return serverlst, fmt.Errorf("No Servers Found")
+		return serverlst, reqInf, fmt.Errorf("No Servers Found")
 	}
-	return serverlst, nil
+	return serverlst, reqInf, nil
 }

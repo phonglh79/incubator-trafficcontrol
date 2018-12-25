@@ -52,7 +52,7 @@ __PACKAGE__->table("tenant");
 
   data_type: 'timestamp with time zone'
   default_value: current_timestamp
-  is_nullable: 1
+  is_nullable: 0
   original: {default_value => \"now()"}
 
 =cut
@@ -80,7 +80,7 @@ __PACKAGE__->add_columns(
   {
     data_type     => "timestamp with time zone",
     default_value => \"current_timestamp",
-    is_nullable   => 1,
+    is_nullable   => 0,
     original      => { default_value => \"now()" },
   },
 );
@@ -112,6 +112,36 @@ __PACKAGE__->set_primary_key("id");
 __PACKAGE__->add_unique_constraint("tenant_name_key", ["name"]);
 
 =head1 RELATIONS
+
+=head2 deliveryservices
+
+Type: has_many
+
+Related object: L<Schema::Result::Deliveryservice>
+
+=cut
+
+__PACKAGE__->has_many(
+  "deliveryservices",
+  "Schema::Result::Deliveryservice",
+  { "foreign.tenant_id" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
+
+=head2 origins
+
+Type: has_many
+
+Related object: L<Schema::Result::Origin>
+
+=cut
+
+__PACKAGE__->has_many(
+  "origins",
+  "Schema::Result::Origin",
+  { "foreign.tenant" => "self.id" },
+  { cascade_copy => 0, cascade_delete => 0 },
+);
 
 =head2 parent
 
@@ -164,9 +194,23 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07046 @ 2017-03-20 09:11:40
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:W4nbCNSj6N1gMar0mRvQ5Q
-
+# Created by DBIx::Class::Schema::Loader v0.07042 @ 2018-05-15 16:06:00
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:fLrBvjW6JLyIRv59Qkrr+Q
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration
+#
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+#
 1;

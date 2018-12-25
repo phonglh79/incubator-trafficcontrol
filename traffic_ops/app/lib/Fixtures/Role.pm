@@ -32,7 +32,7 @@ my %definition_for = (
 		new   => 'Role',
 		using => {
 			id          => 2,
-			name        => 'read-only user',
+			name        => 'read-only',
 			description => 'block all access',
 			priv_level  => 10,
 		},
@@ -43,7 +43,7 @@ my %definition_for = (
 			id          => 7,
 			name        => 'federation',
 			description => 'Role for Secondary CZF',
-			priv_level  => 11,
+			priv_level  => 15,
 		},
 	},
 	operations => {
@@ -64,22 +64,13 @@ my %definition_for = (
 			priv_level  => 30,
 		},
 	},
-	migrations => {
-		new   => 'Role',
-		using => {
-			id          => 5,
-			name        => 'migrations',
-			description => 'database migrations user - DO NOT REMOVE',
-			priv_level  => 20,
-		},
-	},
 	portal => {
 		new   => 'Role',
 		using => {
 			id          => 6,
 			name        => 'portal',
 			description => 'Portal User',
-			priv_level  => 2,
+			priv_level  => 15,
 		},
 	},
 	steering => {

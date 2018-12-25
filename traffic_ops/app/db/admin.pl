@@ -32,6 +32,8 @@ use DBIx::Class::Schema::Loader qw/make_schema_at/;
 use Env;
 use Env qw(HOME);
 
+print STDERR "WARNING: this script is deprecated, please use the db/admin binary instead.\n\n";
+
 my $usage = "\n"
 	. "Usage:  $PROGRAM_NAME [--env (development|test|production|integration)] [arguments]\t\n\n"
 	. "Example:  $PROGRAM_NAME --env=test reset\n\n"
@@ -53,7 +55,7 @@ my $usage = "\n"
 	. " *:*:*:traffic_ops:the-password-in-dbconf.yml \n"
 	. " ----------------------\n\n"
 	. " Save the following example into this file $HOME/.pgpass with the permissions of this file\n"
-	. " so only $USER can read and write.\n\n"
+	. " so only your user can read and write.\n\n"
 	. "     \$ chmod 0600 $HOME/.pgpass\n\n"
 	. "===================================================================================================================\n"
 	. "$PROGRAM_NAME arguments:   \n\n"
@@ -188,7 +190,7 @@ sub migrate {
 sub seed {
 	print "Seeding database w/ required data.\n";
 	local $ENV{PGPASSWORD} = $db_password;
-	if ( system("psql -h $host_ip -p $host_port -d $db_name -U $db_user -e < db/seeds.sql") != 0 ) {
+	if ( system("psql -h $host_ip -p $host_port -d $db_name -U $db_user -e -v ON_ERROR_STOP=1 < db/seeds.sql") != 0 ) {
 		die "Can't seed database w/ required data\n";
 	}
 }
@@ -196,7 +198,7 @@ sub seed {
 sub patches {
 	print "Patching database with required data fixes.\n";
 	local $ENV{PGPASSWORD} = $db_password;
-	if ( system("psql -h $host_ip -p $host_port -d $db_name -U $db_user -e < db/patches.sql") != 0 ) {
+	if ( system("psql -h $host_ip -p $host_port -d $db_name -U $db_user -e -v ON_ERROR_STOP=1 < db/patches.sql") != 0 ) {
 		die "Can't patch database w/ required data\n";
 	}
 }
@@ -204,7 +206,7 @@ sub patches {
 sub load_schema {
 	print "Creating database tables.\n";
 	local $ENV{PGPASSWORD} = $db_password;
-	if ( system("psql -h $host_ip -p $host_port -d $db_name -U $db_user -e < db/create_tables.sql") != 0 ) {
+	if ( system("psql -h $host_ip -p $host_port -d $db_name -U $db_user -e -v ON_ERROR_STOP=1 < db/create_tables.sql") != 0 ) {
 		die "Can't create database tables\n";
 	}
 }

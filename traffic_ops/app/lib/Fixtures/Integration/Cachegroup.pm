@@ -31,12 +31,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'dc-cloudeast',
-			longitude => '0',
+			coordinate => '1',
 			parent_cachegroup_id => undef,
 			short_name => '0-cle',
 			type => '4',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '0',
 		},
 	},
 	## id => 2
@@ -44,11 +43,10 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'dc-cloudwest',
+			coordinate => '2',
 			short_name => '1-clw',
 			type => '4',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '0',
-			longitude => '0',
 			parent_cachegroup_id => undef,
 		},
 	},
@@ -57,11 +55,10 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'origin-east',
+			coordinate => '3',
 			short_name => '2-org-east',
 			type => '25',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '0',
-			longitude => '0',
 			parent_cachegroup_id => undef,
 		},
 	},
@@ -70,12 +67,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'mid-east',
+			coordinate => '4',
 			parent_cachegroup_id => '5',
 			short_name => '3-east',
 			type => '23',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '0',
-			longitude => '0',
 		},
 	},
 	## id => 5
@@ -83,12 +79,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'origin-west',
+			coordinate => '5',
 			parent_cachegroup_id => undef,
 			short_name => '4-org-west',
 			type => '25',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '0',
-			longitude => '0',
 		},
 	},
 	## id => 6
@@ -96,10 +91,9 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'mid-west',
+			coordinate => '6',
 			type => '23',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '0',
-			longitude => '0',
 			parent_cachegroup_id => '6',
 			short_name => '5-west',
 		},
@@ -109,12 +103,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'us-ca-losangeles',
+			coordinate => '7',
 			parent_cachegroup_id => '4',
 			short_name => '6-lax',
 			type => '14',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '34.05',
-			longitude => '-118.25',
 		},
 	},
 	## id => 8
@@ -122,10 +115,9 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'us-co-denver',
+			coordinate => '8',
 			type => '14',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '39.739167',
-			longitude => '-104.984722',
 			parent_cachegroup_id => '4',
 			short_name => '7-den',
 		},
@@ -135,12 +127,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'us-il-chicago',
+			coordinate => '9',
 			parent_cachegroup_id => '4',
 			short_name => '8-chi',
 			type => '14',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '41.881944',
-			longitude => '-87.627778',
 		},
 	},
 	## id => 10
@@ -148,9 +139,8 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'us-ny-newyork',
+			coordinate => '10',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '40.71435',
-			longitude => '-74.00597',
 			parent_cachegroup_id => '3',
 			short_name => '9-nyc',
 			type => '14',
@@ -161,12 +151,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'us-pa-philadelphia',
+			coordinate => '11',
 			parent_cachegroup_id => '3',
 			short_name => '10-phl',
 			type => '14',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '39.664722',
-			longitude => '-75.565278',
 		},
 	},
 	## id => 12
@@ -174,12 +163,11 @@ my %definition_for = (
 		new => 'Cachegroup',
 		using => {
 			name => 'us-tx-houston',
+			coordinate => '12',
 			parent_cachegroup_id => '3',
 			short_name => '11-hou',
 			type => '14',
 			last_updated => '2015-12-10 15:44:36',
-			latitude => '29.762778',
-			longitude => '-95.383056',
 		},
 	},
 );
